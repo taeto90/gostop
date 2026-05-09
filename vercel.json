@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm --filter @gostop/web build",
+  "installCommand": "corepack enable && pnpm install --frozen-lockfile",
+  "outputDirectory": "apps/web/dist",
+  "framework": null,
+  "rewrites": [
+    { "source": "/((?!assets/|.*\\.[a-z0-9]+$).*)", "destination": "/index.html" }
+  ]
+}

@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@theme {
+  /* 게임판 녹색 펠트 (메인 테마) */
+  --color-felt-50: #ecfdf5;
+  --color-felt-100: #d1fae5;
+  --color-felt-200: #a7f3d0;
+  --color-felt-300: #6ee7b7;
+  --color-felt-400: #34d399;
+  --color-felt-500: #10b981;
+  --color-felt-600: #166534;
+  --color-felt-700: #14532d;
+  --color-felt-800: #0f5132;
+  --color-felt-900: #0a3622;
+  --color-felt-950: #042f1c;
+
+  /* 화투 카드 베이스 */
+  --color-hwatu-back: #7f1d1d;       /* 카드 뒷면 빨강 */
+  --color-hwatu-back-light: #b91c1c;
+  --color-hwatu-frame: #fff7ed;      /* 카드 프레임 */
+  --color-hwatu-gold: #fbbf24;       /* 강조 노랑 (광/매칭) */
+  --color-hwatu-emerald: #10b981;    /* 청 강조 (열끗/청단) */
+  --color-hwatu-rose: #e11d48;       /* 적 강조 (띠/홍단) */
+
+  /* 폰트 */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Pretendard", "Apple SD Gothic Neo", sans-serif;
+
+  /* 애니메이션 타이밍 */
+  --ease-card: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 가로 모드 강제 (모바일) */
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  overflow: hidden;
+}
+
+#root {
+  height: 100dvh;
+  width: 100dvw;
+  overflow: hidden;
+}
+
+/* 입력 필드는 select 가능 */
+input, textarea, [contenteditable] {
+  user-select: text;
+}
+
+/* 화투판 펠트 텍스처 */
+.bg-felt {
+  background-color: var(--color-felt-800);
+  background-image:
+    radial-gradient(at 20% 20%, color-mix(in srgb, var(--color-felt-700) 70%, transparent), transparent 50%),
+    radial-gradient(at 80% 30%, color-mix(in srgb, var(--color-felt-900) 60%, transparent), transparent 50%),
+    radial-gradient(at 60% 80%, color-mix(in srgb, var(--color-felt-700) 50%, transparent), transparent 50%);
+}
+
+/* 카드 뒷면 — 사용자 제공 이미지 (붉은 격자 패턴) */
+.bg-card-back {
+  background-image: url('/assets/cards/card-back.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: 2px solid #4a0e0e;
+}
+
+/* 매칭 가능 카드 펄스 효과 */
+@keyframes matchable-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.6); }
+  50% { box-shadow: 0 0 0 4px rgba(251, 191, 36, 0); }
+}
+.animate-matchable {
+  animation: matchable-pulse 1.6s ease-in-out infinite;
+}
+
+/* 모바일 세로 모드 경고 (가로 강제) */
+@media (orientation: portrait) and (max-width: 900px) {
+  body::before {
+    content: '📱 화면을 가로로 돌려주세요';
+    position: fixed;
+    inset: 0;
+    background: var(--color-felt-950);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    font-size: 1.25rem;
+    font-weight: 600;
+    text-align: center;
+    padding: 2rem;
+  }
+}

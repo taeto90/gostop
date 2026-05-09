@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="32" fill="#0f5132"/>
+  <rect x="40" y="40" width="44" height="68" rx="6" fill="#fff" stroke="#7f1d1d" stroke-width="3"/>
+  <rect x="60" y="58" width="44" height="68" rx="6" fill="#fff" stroke="#7f1d1d" stroke-width="3"/>
+  <rect x="80" y="76" width="44" height="68" rx="6" fill="#fff" stroke="#7f1d1d" stroke-width="3"/>
+  <text x="96" y="170" font-size="22" font-weight="800" fill="#fbbf24" text-anchor="middle" font-family="system-ui, sans-serif">GoStop</text>
+</svg>

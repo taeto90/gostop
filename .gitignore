@@ -1,0 +1,68 @@
+# MCP & secrets - DO NOT COMMIT
+.mcp.json
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets.json
+
+# Dependencies
+node_modules/
+.pnpm-store/
+.yarn/
+.npm/
+
+# Build output
+dist/
+build/
+out/
+.next/
+.turbo/
+.vite/
+*.tsbuildinfo
+
+# Testing
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+playwright/.cache/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor & OS
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Playwright temp / debug screenshots
+.playwright-mcp/
+phase*-*.png
+voice-only-*.png
+final-*.png
+create-room-*.png
+history-modal-*.png
+docs/test.txt
+docs/magic.txt
