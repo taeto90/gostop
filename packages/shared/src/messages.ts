@@ -128,6 +128,15 @@ export interface ClientToServerEvents {
     callback: (result: Result) => void,
   ) => void;
 
+  /**
+   * 호스트가 player 순서 재배열 (대기실 한정).
+   * playerIds는 새 순서. 모두 현재 멤버여야 + 길이 일치 (검증 안 맞으면 reject).
+   */
+  'room:reorder-players': (
+    payload: { playerIds: string[] },
+    callback: (result: Result) => void,
+  ) => void;
+
   /** 호스트가 다른 멤버에게 방장 권한 위임 (대기실 한정) */
   'room:transfer-host': (
     payload: { targetUserId: string },

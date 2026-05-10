@@ -87,8 +87,6 @@ export function GameView({
   const chatUnread = useChatStore((s) => s.unreadCount);
   const isHost = view.hostUserId === view.myUserId;
 
-  // server broadcast → 마지막 turn specials EventOverlay 발화
-  useMultiSpecialsTrigger(view);
   // AFK 감지 — turn 시작 후 30초+ 응답 없으면 해당 userId 표시
   const afkUserId = useAfkDetect(view.turnUserId);
   // 4-phase staging: 시퀀스 동안 prev view 유지하다가 단계별로 incoming view 적용
@@ -98,6 +96,8 @@ export function GameView({
     flippingCardId: multiFlippingId,
     currentPhase: animationPhase,
   } = useMultiTurnSequence(view);
+  // 시퀀스 완료(phase='idle') 시점에 specials EventOverlay 발화 — 손패 비행 끝난 후
+  useMultiSpecialsTrigger(displayView, animationPhase);
 
   const effectiveView = displayView;
   const myPlayer = effectiveView.players.find((p) => p.userId === effectiveView.myUserId);

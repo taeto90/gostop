@@ -35,6 +35,7 @@ import {
   Toggle9YeolSchema,
   GameActionSchema,
   GameStartSchema,
+  ReorderPlayersSchema,
   RoomCreateSchema,
   RoomJoinSchema,
   RoomRejoinSchema,
@@ -625,6 +626,45 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
         });
       }
       cb({ ok: true, data: { room: null } });
+    });
+
+    // ============================== room:reorder-players ==============================
+    // 호스트가 player 순서 재배열 (대기실 한정). 게임 시작 시 첫 turn은 players[0].
+    socket.on('room:reorder-players', (payload, cb) => {
+      const { userId, roomId } = socket.data;
+      if (!userId || !roomId) return cb({ ok: false, error: '방에 입장하지 않음' });
+
+      const room = roomStore.get(roomId);
+      if (!room) return cb({ ok: false, error: '방을 찾을 수 없음' });
+
+      if (room.hostId !== userId) {
+        return cb({ ok: false, error: '호스트만 순서 변경 가능' });
+      }
+      if (room.phase !== 'waiting') {
+        return cb({ ok: false, error: '대기실에서만 순서 변경 가능' });
+      }
+
+      const parsed = ReorderPlayersSchema.safeParse(payload);
+      if (!parsed.success) return cb({ ok: false, error: '입력 검증 실패' });
+      const { playerIds } = parsed.data;
+
+      // 검증: 새 순서가 현재 player 집합과 정확히 일치해야 함 (중복/누락 X)
+      const currentIds = new Set(room.players.map((p) => p.id));
+      const newIds = new Set(playerIds);
+      if (
+        currentIds.size !== newIds.size ||
+        playerIds.length !== room.players.length ||
+        playerIds.some((id) => !currentIds.has(id))
+      ) {
+        return cb({ ok: false, error: '순서 목록이 현재 player와 일치 X' });
+      }
+
+      // 새 순서로 재배열
+      const playerMap = new Map(room.players.map((p) => [p.id, p]));
+      room.players = playerIds.map((id) => playerMap.get(id)!);
+
+      cb({ ok: true });
+      broadcastRoomState(io, room);
     });
 
     // ============================== room:kick ==============================

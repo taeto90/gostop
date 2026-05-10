@@ -17,9 +17,9 @@
 // Phase 1 — 손패 확대 → 바닥 비행
 // ============================================================
 /** Phase 1-A: 손패 카드를 그 자리에서 확대 */
-export const HAND_PEAK_DURATION = 0.3;
+export const HAND_PEAK_DURATION = 0.6;
 /** Phase 1-B: 확대된 카드가 바닥으로 비행 (축소되면서) */
-export const FLY_DURATION_HAND_TO_FIELD = 0.3;
+export const FLY_DURATION_HAND_TO_FIELD = 0.6;
 /** 손패 확대 시 배율 */
 export const HAND_PEAK_SCALE = 1.4;
 /** 비행 중 좌우 흔들기 회전 각도 키프레임 (도 단위) */
@@ -32,11 +32,11 @@ export const PHASE_1_TOTAL_DURATION = HAND_PEAK_DURATION + FLY_DURATION_HAND_TO_
 // Phase 3 — 더미 flip + 확대 + 비행
 // ============================================================
 /** 더미 카드 3D rotateY (뒷면 → 앞면) */
-export const FLIP_DURATION = 0.3;
+export const FLIP_DURATION = 0.6;
 /** flip 완료 후 확대 상태 유지 */
-export const SCALE_PEAK_DURATION = 0.5;
+export const SCALE_PEAK_DURATION = 1.0;
 /** 확대된 카드가 원래 사이즈로 축소되며 빈자리로 비행 */
-export const FLY_TO_SLOT_DURATION = 0.3;
+export const FLY_TO_SLOT_DURATION = 0.6;
 /** 확대 시 배율 */
 export const FLIP_PEAK_SCALE = 2;
 
@@ -44,15 +44,15 @@ export const FLIP_PEAK_SCALE = 2;
 // Phase 4 — 점수판 비행
 // ============================================================
 /** 카드 한 장당 비행 시간 */
-export const FLY_DURATION_TO_COLLECTED = 0.5;
+export const FLY_DURATION_TO_COLLECTED = 1.0;
 /** 카드 사이 출발 간격 (한 장이 출발하고 다음 카드까지) */
-export const COLLECT_STAGGER = 0.15;
+export const COLLECT_STAGGER = 0.3;
 
 // ============================================================
 // 공통
 // ============================================================
 /** 단계 사이 간격 (Phase 2 끝 → Phase 3 시작, Phase 3 끝 → Phase 4 시작) */
-export const INTER_PHASE_DELAY = 0.2;
+export const INTER_PHASE_DELAY = 0.4;
 
 // ============================================================
 // 헬퍼

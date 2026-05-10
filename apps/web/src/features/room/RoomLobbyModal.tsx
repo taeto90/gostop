@@ -103,6 +103,20 @@ export function RoomLobbyModal({ view }: RoomLobbyModalProps) {
     if (!r.ok) toast.error(r.error);
   }
 
+  // 호스트가 player 카드를 다른 player 카드 위에 드롭 → 순서 재배열 (drag된 카드를 target 위치로 이동)
+  async function reorderPlayers(draggedId: string, targetId: string) {
+    if (draggedId === targetId) return;
+    const ids = view.players.map((p) => p.userId);
+    const fromIdx = ids.indexOf(draggedId);
+    const toIdx = ids.indexOf(targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const next = [...ids];
+    next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, draggedId);
+    const r = await emitWithAck('room:reorder-players', { playerIds: next });
+    if (!r.ok) toast.error(r.error);
+  }
+
   // AnimatePresence는 backdrop motion만 감싸야 함 — 같은 children 안에 key 없는
   // 일반 React 컴포넌트(ChatPanel/RoomRulesModal/AISetupModal)가 함께 있으면
   // React가 key=undefined 충돌로 'same key' 경고. sub-modals는 외부에서 자체 처리.
@@ -150,6 +164,7 @@ export function RoomLobbyModal({ view }: RoomLobbyModalProps) {
                 isHost={isHost}
                 volunteers={volunteers}
                 onSetRole={setMemberRole}
+                onReorderPlayers={reorderPlayers}
               />
 
               {(view.players.length <= 2 || hasBotsConfigured) && (
@@ -333,11 +348,13 @@ function MemberSection({
   isHost,
   volunteers,
   onSetRole,
+  onReorderPlayers,
 }: {
   view: RoomView;
   isHost: boolean;
   volunteers: readonly string[];
   onSetRole: (targetUserId: string, role: 'player' | 'spectator') => void;
+  onReorderPlayers: (draggedId: string, targetId: string) => void;
 }) {
   // 드래그된 유저 (드롭 대상에서 사용)
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -353,6 +370,17 @@ function MemberSection({
     onSetRole(draggingId, role);
     setDraggingId(null);
   }
+  function onDropOnPlayer(targetUserId: string) {
+    if (!draggingId) return;
+    // dragged가 player이면 순서 변경, spectator였으면 player로 이동
+    const isDraggedPlayer = view.players.some((p) => p.userId === draggingId);
+    if (isDraggedPlayer && isHost) {
+      onReorderPlayers(draggingId, targetUserId);
+    } else if (!isDraggedPlayer) {
+      onSetRole(draggingId, 'player');
+    }
+    setDraggingId(null);
+  }
 
   return (
     <>
@@ -364,6 +392,7 @@ function MemberSection({
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         onDrop={() => onDropTo('player')}
+        onDropOnPlayer={onDropOnPlayer}
         onSetRole={onSetRole}
       />
       <SpectatorGrid
@@ -387,6 +416,7 @@ function PlayerGrid({
   onDragStart,
   onDragEnd,
   onDrop,
+  onDropOnPlayer,
   onSetRole,
 }: {
   view: RoomView;
@@ -396,6 +426,7 @@ function PlayerGrid({
   onDragStart: (userId: string) => void;
   onDragEnd: () => void;
   onDrop: () => void;
+  onDropOnPlayer: (targetUserId: string) => void;
   onSetRole: (targetUserId: string, role: 'player' | 'spectator') => void;
 }) {
   // 드롭 가능한 영역 (spectator → player) 표시 — 자리 부족 시 false
@@ -419,32 +450,44 @@ function PlayerGrid({
         onDragOver={canAcceptDrop ? (e) => e.preventDefault() : undefined}
         onDrop={canAcceptDrop ? onDrop : undefined}
       >
-        {view.players.map((p) => (
-          <LobbyMemberCard
-            key={p.userId}
-            userId={p.userId}
-            emoji={p.emojiAvatar}
-            nickname={p.nickname}
-            isHost={p.userId === view.hostUserId}
-            isMe={p.userId === view.myUserId}
-            isSpectator={false}
-            isVolunteer={volunteers.includes(p.userId)}
-            isGwangPaliAssigned={(view.gwangPaliAssignments ?? []).includes(p.userId)}
-            draggable={
-              p.userId !== view.hostUserId &&
-              (p.userId === view.myUserId || isHost)
-            }
-            onDragStart={() => onDragStart(p.userId)}
-            onDragEnd={onDragEnd}
-            menuActions={
-              isHost && p.userId !== view.myUserId
-                ? buildMenuActions(p.userId, view, onSetRole)
-                : p.userId === view.myUserId
-                  ? buildSelfMenu(view.hostUserId === view.myUserId)
-                  : undefined
-            }
-          />
-        ))}
+        {view.players.map((p) => {
+          // drop target — 호스트가 player를 드래그 중이거나, spectator가 player로 이동 중이면 허용
+          const draggedIsPlayer =
+            draggingId !== null && view.players.some((pp) => pp.userId === draggingId);
+          const draggedIsSpec =
+            draggingId !== null && view.spectators.some((s) => s.userId === draggingId);
+          const acceptDrop =
+            draggingId !== null &&
+            draggingId !== p.userId &&
+            ((draggedIsPlayer && isHost) || (draggedIsSpec && view.players.length < 5));
+          return (
+            <LobbyMemberCard
+              key={p.userId}
+              userId={p.userId}
+              emoji={p.emojiAvatar}
+              nickname={p.nickname}
+              isHost={p.userId === view.hostUserId}
+              isMe={p.userId === view.myUserId}
+              isSpectator={false}
+              isVolunteer={volunteers.includes(p.userId)}
+              isGwangPaliAssigned={(view.gwangPaliAssignments ?? []).includes(p.userId)}
+              draggable={
+                p.userId !== view.hostUserId &&
+                (p.userId === view.myUserId || isHost)
+              }
+              onDragStart={() => onDragStart(p.userId)}
+              onDragEnd={onDragEnd}
+              onDropTarget={acceptDrop ? () => onDropOnPlayer(p.userId) : undefined}
+              menuActions={
+                isHost && p.userId !== view.myUserId
+                  ? buildMenuActions(p.userId, view, onSetRole)
+                  : p.userId === view.myUserId
+                    ? buildSelfMenu(view.hostUserId === view.myUserId)
+                    : undefined
+              }
+            />
+          );
+        })}
         {Array.from({
           length: Math.max(0, view.maxPlayers - view.players.length),
         }).map((_, i) => (

@@ -39,6 +39,10 @@ export const TargetUserSchema = z.object({
   targetUserId: UserIdSchema,
 });
 
+export const ReorderPlayersSchema = z.object({
+  playerIds: z.array(UserIdSchema).min(1).max(5),
+});
+
 export const UpdateRulesSchema = z.object({
   rules: z
     .object({

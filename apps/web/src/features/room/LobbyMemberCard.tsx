@@ -38,6 +38,12 @@ interface LobbyMemberCardProps {
   draggable?: boolean;
   onDragStart?: () => void;
   onDragEnd?: () => void;
+  /** 정의 시 이 card가 drop target — 다른 card가 자기 위에 드롭됨 (player 순서 변경용) */
+  onDropTarget?: () => void;
+  /** drop target 활성 시 시각 강조 */
+  isDropHover?: boolean;
+  onDragOverTarget?: () => void;
+  onDragLeaveTarget?: () => void;
   /** 정의 시 클릭 → popover 메뉴. 모든 액션 optional, 정의된 것만 노출 */
   menuActions?: LobbyMemberMenuActions;
 }
@@ -54,6 +60,10 @@ export const LobbyMemberCard = memo(function LobbyMemberCard({
   draggable = false,
   onDragStart,
   onDragEnd,
+  onDropTarget,
+  isDropHover,
+  onDragOverTarget,
+  onDragLeaveTarget,
   menuActions,
 }: LobbyMemberCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -114,6 +124,25 @@ export const LobbyMemberCard = memo(function LobbyMemberCard({
       draggable={draggable}
       onDragStart={draggable ? handleDragStart : undefined}
       onDragEnd={draggable ? onDragEnd : undefined}
+      onDragOver={
+        onDropTarget
+          ? (e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              onDragOverTarget?.();
+            }
+          : undefined
+      }
+      onDragLeave={onDropTarget ? onDragLeaveTarget : undefined}
+      onDrop={
+        onDropTarget
+          ? (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDropTarget();
+            }
+          : undefined
+      }
       className={`relative flex items-center gap-2 rounded-lg border p-2 transition ${
         isMe
           ? 'border-emerald-500/50 bg-emerald-500/10'
@@ -122,7 +151,7 @@ export const LobbyMemberCard = memo(function LobbyMemberCard({
             : 'border-felt-800 bg-felt-900/40'
       } ${hasMenu ? 'cursor-pointer hover:border-amber-400/50' : ''} ${
         draggable ? 'active:opacity-60' : ''
-      }`}
+      } ${isDropHover ? 'ring-2 ring-sky-400 ring-offset-1 ring-offset-felt-950' : ''}`}
     >
       <span className="text-2xl">{emoji}</span>
       <div className="min-w-0 flex-1">
