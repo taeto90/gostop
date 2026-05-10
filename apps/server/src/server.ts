@@ -36,6 +36,9 @@ fastify.get('/health', async () => ({
   uptime: Math.floor(process.uptime()),
   rooms: roomStore.size(),
   timestamp: Date.now(),
+  // 진단용 — production에서 CORS env 정확히 읽혔는지 확인. 추후 제거.
+  corsOrigin: config.CORS_ORIGIN,
+  nodeEnv: process.env.NODE_ENV,
 }));
 
 // 진단용 — 현재 서버의 모든 방 상태 dump. NODE_ENV=production이 아닐 때만 노출.
