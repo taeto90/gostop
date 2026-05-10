@@ -13,6 +13,7 @@
     "@gostop/shared": "workspace:*",
     "@livekit/components-react": "^2.9.20",
     "@livekit/components-styles": "^1.2.0",
+    "@supabase/supabase-js": "^2.105.4",
     "framer-motion": "^12.0.0",
     "howler": "^2.2.4",
     "livekit-client": "^2.18.8",
