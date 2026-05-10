@@ -9,6 +9,8 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      // dev 환경에서는 SW 등록 X — stale cache + JSON 파싱 에러 회피
+      devOptions: { enabled: false },
       includeAssets: ['favicon.svg', 'assets/cards/*.svg'],
       manifest: {
         name: 'GoStop — 친구들과 즐기는 화투',
