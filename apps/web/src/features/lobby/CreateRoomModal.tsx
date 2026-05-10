@@ -129,16 +129,19 @@ export function CreateRoomModal({
                 </p>
               </div>
 
-              {/* 관전자 옵션 */}
-              <label className="flex items-center gap-2 text-sm text-green-200">
-                <input
-                  type="checkbox"
-                  checked={asSpectator}
-                  onChange={(e) => setAsSpectator(e.target.checked)}
-                  className="h-4 w-4 accent-amber-500"
-                />
-                관전자로 입장 (게임 안 하고 채팅만)
-              </label>
+              {/* 관전자 옵션 — 모바일 오터치 방지를 위해 명시적 토글 버튼 형태로 */}
+              <button
+                type="button"
+                onClick={() => setAsSpectator((v) => !v)}
+                className={`flex items-center justify-between rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                  asSpectator
+                    ? 'border-amber-400/60 bg-amber-500/15 text-amber-100'
+                    : 'border-green-700/60 bg-green-950/40 text-green-200 hover:bg-green-900/40'
+                }`}
+              >
+                <span>👁️ 관전자로 입장 (게임 X, 채팅만)</span>
+                <span className="text-xs">{asSpectator ? 'ON' : 'OFF'}</span>
+              </button>
 
               {err && (
                 <div className="rounded border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">

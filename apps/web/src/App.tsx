@@ -5,7 +5,9 @@ import { useSessionStore } from './stores/sessionStore.ts';
 import { useGameHistoryStore } from './stores/gameHistoryStore.ts';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { EventOverlay } from './components/EventOverlay.tsx';
+import { InstallPwaBanner } from './components/InstallPwaBanner.tsx';
 import { ToastContainer } from './components/ToastContainer.tsx';
+import { tryLockLandscape } from './lib/pwa.ts';
 import { Lobby } from './features/lobby/Lobby.tsx';
 import { ResultDemoView } from './features/room/ResultDemoView.tsx';
 import { RoomScreen } from './features/room/RoomScreen.tsx';
@@ -21,6 +23,11 @@ export default function App() {
     void useGameHistoryStore.getState().syncFromCloud(myUserId);
   }, [myUserId]);
 
+  // PWA 모드에서 가로 lock 시도 (모바일에서 회전 막기)
+  useEffect(() => {
+    void tryLockLandscape();
+  }, []);
+
   return (
     <ErrorBoundary>
       <BrowserRouter>
@@ -32,6 +39,7 @@ export default function App() {
         </Routes>
         <EventOverlay />
         <ToastContainer />
+        <InstallPwaBanner />
       </BrowserRouter>
     </ErrorBoundary>
   );

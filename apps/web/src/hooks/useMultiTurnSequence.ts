@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Card, RoomView } from '@gostop/shared';
 import { playSound } from '../lib/sound.ts';
+import type { AnimationPhase } from '../lib/animationContext.ts';
 import {
   FLIP_DURATION,
   FLY_DURATION_HAND_TO_FIELD,
@@ -17,6 +18,8 @@ interface MultiTurnSequence {
   peakingHandCardId: string | null;
   /** Phase 3: 더미에서 막 뒤집힌 카드 — flip + 확대 효과 */
   flippingCardId: string | null;
+  /** 현재 진행 중인 phase — Card layout transition duration이 phase별로 다름 */
+  currentPhase: AnimationPhase;
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -37,6 +40,7 @@ export function useMultiTurnSequence(view: RoomView): MultiTurnSequence {
   const [displayView, setDisplayView] = useState<RoomView>(view);
   const [peakingHandCardId, setPeakingHandCardId] = useState<string | null>(null);
   const [flippingCardId, setFlippingCardId] = useState<string | null>(null);
+  const [currentPhase, setCurrentPhase] = useState<AnimationPhase>('idle');
   const seqIdRef = useRef(0);
   // 직전 sequence가 끝난 시점의 view (stale closure 회피)
   const prevViewRef = useRef<RoomView>(view);
@@ -76,7 +80,8 @@ export function useMultiTurnSequence(view: RoomView): MultiTurnSequence {
 
     let cancelled = false;
     void (async () => {
-      // Phase 1-A: 손패 카드 확대
+      // Phase 1: 손패 → 바닥 (peak + fly). Card 컴포넌트가 phase1 layout duration 사용.
+      setCurrentPhase('phase1');
       if (handCardId) {
         setPeakingHandCardId(handCardId);
         await sleep(sec(HAND_PEAK_DURATION));
@@ -84,23 +89,23 @@ export function useMultiTurnSequence(view: RoomView): MultiTurnSequence {
         setPeakingHandCardId(null);
       }
 
-      // Phase 1-B: 손패 → 바닥 비행 (sleep만, layoutId는 view 변경 시 자동)
-      await sleep(sec(FLY_DURATION_HAND_TO_FIELD));
-      if (cancelled || seqIdRef.current !== myId) return;
-
-      // Phase 2: 착지 사운드 + incoming view 적용 (손패에서 카드 빠지고 바닥/매칭 반영)
+      // Phase 2: 착지 사운드 + incoming view 적용 → layoutId 보간 시작
+      // Phase 1-B의 별도 sleep은 제거 — view swap 시점에 framer-motion layout이 0.3초간 보간.
+      // sleep을 view swap 전에 두면 사용자가 손패 카드를 더 오래 보지만 보간 시작이 늦음.
       playSound('card-place');
       setDisplayView(incoming);
-      await sleep(sec(INTER_PHASE_DELAY));
+      await sleep(sec(FLY_DURATION_HAND_TO_FIELD + INTER_PHASE_DELAY));
       if (cancelled || seqIdRef.current !== myId) return;
 
       // Phase 3: 더미 카드 뒤집기 + 확대 + 비행
       if (drawnCardId) {
+        setCurrentPhase('phase3');
         setFlippingCardId(drawnCardId);
         await sleep(sec(FLIP_DURATION + SCALE_PEAK_DURATION + FLY_TO_SLOT_DURATION));
         if (cancelled || seqIdRef.current !== myId) return;
         setFlippingCardId(null);
       }
+      setCurrentPhase('idle');
     })();
 
     return () => {
@@ -111,7 +116,7 @@ export function useMultiTurnSequence(view: RoomView): MultiTurnSequence {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.turnSeq, view.roomId, view.phase, view.deckCount]);
 
-  return { displayView, peakingHandCardId, flippingCardId };
+  return { displayView, peakingHandCardId, flippingCardId, currentPhase };
 }
 
 /**

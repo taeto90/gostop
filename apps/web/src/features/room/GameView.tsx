@@ -1,4 +1,5 @@
 import { LayoutGroup } from 'framer-motion';
+import { AnimationPhaseContext } from '../../lib/animationContext.ts';
 import { useMemo, useRef, useState } from 'react';
 import { useAfkDetect } from '../../hooks/useAfkDetect.ts';
 import { useAnyTurnCountdown } from '../../hooks/useAnyTurnCountdown.ts';
@@ -95,6 +96,7 @@ export function GameView({
     displayView,
     peakingHandCardId: multiPeekingId,
     flippingCardId: multiFlippingId,
+    currentPhase: animationPhase,
   } = useMultiTurnSequence(view);
 
   const effectiveView = displayView;
@@ -249,6 +251,7 @@ export function GameView({
   );
 
   return (
+    <AnimationPhaseContext.Provider value={animationPhase}>
     <LayoutGroup>
       <div
         ref={rootRef}
@@ -478,5 +481,6 @@ export function GameView({
         })}
       </div>
     </LayoutGroup>
+    </AnimationPhaseContext.Provider>
   );
 }

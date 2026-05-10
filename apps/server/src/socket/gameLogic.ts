@@ -180,18 +180,14 @@ export function startGameInRoom(room: Room): void {
     player.collected = [];
     player.score = 0;
     player.goCount = 0;
-    // AI 봇은 게임 시작 시 흔들기/폭탄 자동 적용 (사람은 클라 모달에서 선택).
-    // 사람은 빈 flags로 시작 → 클라가 모달 결과를 별도 이벤트로 전송 (추후).
-    if (isAIBot(player.id)) {
-      const detect = detectShakesAndBombs(player.hand);
-      player.flags = {
-        shookMonths: [...detect.shakeMonths],
-        bombs: detect.bombMonths.length,
-        ppeoksCaused: 0,
-      };
-    } else {
-      player.flags = { shookMonths: [], bombs: 0, ppeoksCaused: 0 };
-    }
+    // 게임 시작 시 흔들기/폭탄 자동 적용 — AI 봇 + 사람 모두.
+    // 추후 사람에게는 ShakeBombModal로 선택권 제공 가능 (현재는 90% case 커버).
+    const detect = detectShakesAndBombs(player.hand);
+    player.flags = {
+      shookMonths: [...detect.shakeMonths],
+      bombs: detect.bombMonths.length,
+      ppeoksCaused: 0,
+    };
   }
 
   // 총통 검사 — 시작 시 손패 같은 월 4장 → 즉시 승리 (선부터 우선)
