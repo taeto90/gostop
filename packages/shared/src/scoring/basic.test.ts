@@ -209,7 +209,7 @@ describe('calculateScore — 피', () => {
       card('m03-pi-2'),
       card('m04-pi-1'),
       card('m04-pi-2'),
-      card('m09-ssangpi'), // 가치 2
+      card('m11-ssangpi'), // 가치 2
     ];
     expect(calculateScore(cards).pi).toBe(1);
   });

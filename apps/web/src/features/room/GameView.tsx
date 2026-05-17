@@ -1,21 +1,33 @@
 import { LayoutGroup } from 'framer-motion';
 import { AnimationPhaseContext } from '../../lib/animationContext.ts';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAfkDetect } from '../../hooks/useAfkDetect.ts';
 import { useAnyTurnCountdown } from '../../hooks/useAnyTurnCountdown.ts';
 import { useMultiPlayCard } from '../../hooks/useMultiPlayCard.ts';
 import { useMultiSpecialsTrigger } from '../../hooks/useMultiSpecialsTrigger.ts';
 import { useMultiTurnSequence } from '../../hooks/useMultiTurnSequence.ts';
+import { useShakeBombFireTrigger } from '../../hooks/useShakeBombFireTrigger.ts';
+import { useChongtongFireTrigger } from '../../hooks/useChongtongFireTrigger.ts';
 import { toast } from '../../stores/toastStore.ts';
-import type { Card, RoomView } from '@gostop/shared';
-import { getMatchableCardsFromHand } from '@gostop/shared';
+import type { PresetId, RoomView } from '@gostop/shared';
+import { getMatchableCardsFromHand, PRESETS } from '@gostop/shared';
 import { TargetPickerModal } from './game-ui/TargetPickerModal.tsx';
+import {
+  BombChoiceModal,
+  ShakeDecisionModal,
+} from './game-ui/ShakeDecisionModal.tsx';
+import { NineYeolPickerModal } from './game-ui/NineYeolPickerModal.tsx';
+import { GoStopModal } from './game-ui/GoStopModal.tsx';
+import { useNineYeolDecision } from '../../hooks/useNineYeolDecision.ts';
+import { PRESET_LABELS } from './RoomLobbyModal.tsx';
+import { computeMultiplier, multiplierBreakdown } from '../../lib/multiplierUtils.ts';
 import { useElementSize } from '../../hooks/useElementSize.ts';
 import { ChatPanel } from '../../components/ChatPanel.tsx';
 import { EmojiReactions } from '../../components/EmojiReactions.tsx';
 import { SettingsModal } from '../../components/SettingsModal.tsx';
 import { emitWithAck } from '../../lib/socket.ts';
 import { useChatStore } from '../../stores/chatStore.ts';
+import { ANIMATION_SPEED_OPTIONS, useDevTestStore } from '../../stores/devTestStore.ts';
 import {
   COLLECTED_PANEL_WIDTH,
   HAND_AREA_MAX,
@@ -23,7 +35,7 @@ import {
   HAND_AREA_RATIO,
   isCompactWidth,
 } from '../../lib/layoutConstants.ts';
-import { HAND_PEAK_DURATION } from '../../lib/animationTiming.ts';
+import { HAND_PEAK_DURATION, sec } from '../../lib/animationTiming.ts';
 import { CenterField } from './game-ui/CenterField.tsx';
 import { CompactHeader } from './game-ui/CompactHeader.tsx';
 import { MobileCollected } from './game-ui/MobileCollected.tsx';
@@ -67,6 +79,20 @@ export function GameView({
   // 솔로(SoloPlay)는 props로 명시 전달, 멀티는 클라 단독으로 짧게 표시.
   const [localPeakingId, setLocalPeakingId] = useState<string | null>(null);
   const peakingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // rules-final.md §4 — 흔들기/폭탄 게임 도중 모달 state
+  const [pendingShake, setPendingShake] = useState<
+    | { cardId: string; month: number; cards: import('@gostop/shared').Card[] }
+    | null
+  >(null);
+  const [pendingBomb, setPendingBomb] = useState<
+    | {
+        cardId: string;
+        month: number;
+        handCards: import('@gostop/shared').Card[];
+        fieldCard: import('@gostop/shared').Card;
+      }
+    | null
+  >(null);
   const [rootRef, { width: rootW, height: rootH }] = useElementSize<HTMLDivElement>();
   const isCompact = isCompactWidth(rootW);
   // 손패 영역 높이 — 화면 height 비율 기반 (lib/layoutConstants 에서 조절).
@@ -81,6 +107,13 @@ export function GameView({
   const handMax = Math.max(handMin, handMaxLimit + 20);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 테스트 모드 한정 — 화면 상단 컨트롤 5개(좌측 시나리오 3개 + 우측 로비/설정 2개) hide/show 토글
+  const [testControlsVisible, setTestControlsVisible] = useState(true);
+
+  // dev 디버그 — `window.__view`로 RoomView 직접 검사. flags/players 등 검증용
+  if (typeof window !== 'undefined') {
+    (window as unknown as { __view?: RoomView }).__view = view;
+  }
   const [rulesOpen, setRulesOpen] = useState(false);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -89,13 +122,36 @@ export function GameView({
 
   // AFK 감지 — turn 시작 후 30초+ 응답 없으면 해당 userId 표시
   const afkUserId = useAfkDetect(view.turnUserId);
+  // 멀티 모드 play-card emit + needsSelection 응답 처리.
+  // 모달은 Phase 3 후 발화 — prebuild view로 손패+더미가 바닥에 placed된 상태 시각화.
+  const myPlayerForEmit = view.players.find((p) => p.userId === view.myUserId);
+  const {
+    pendingPick: pendingMultiPick,
+    prebuildView,
+    emitPlayCard: emitPlayCardMulti,
+    handlePick: handleMultiPick,
+    cancelPick: cancelMultiPick,
+  } = useMultiPlayCard(myPlayerForEmit, view);
+
+  // useMultiTurnSequence의 input — prebuild가 있으면 그것을 처리해 Phase 1~3 재생.
+  // server broadcast 도착 시 useMultiPlayCard가 prebuild clear → 진짜 view로 전환.
+  const inputView = prebuildView ?? view;
+  // step 모드 토글 (testMode + 호스트일 때만 노출). default ON — 현재 디버깅 흐름 유지.
+  const [stepModeEnabled, setStepModeEnabled] = useState(true);
+  const stepMode =
+    (view.testMode ?? false) &&
+    view.hostUserId === view.myUserId &&
+    stepModeEnabled;
   // 4-phase staging: 시퀀스 동안 prev view 유지하다가 단계별로 incoming view 적용
   const {
     displayView,
     peakingHandCardId: multiPeekingId,
     flippingCardId: multiFlippingId,
+    flippingPhase: multiFlippingPhase,
     currentPhase: animationPhase,
-  } = useMultiTurnSequence(view);
+    awaitingStep,
+    continueStep,
+  } = useMultiTurnSequence(inputView, { stepMode });
   // 시퀀스 완료(phase='idle') 시점에 specials EventOverlay 발화 — 손패 비행 끝난 후
   useMultiSpecialsTrigger(displayView, animationPhase);
 
@@ -106,13 +162,11 @@ export function GameView({
   const effectiveFlippingId = flippingCardId ?? multiFlippingId;
   const effectivePeakingId = peakingFromProps ?? localPeakingId ?? multiPeekingId;
 
-  // 본인이 9월 열끗(`m09-yeol`)을 collected에 보유 중이면 끗↔쌍피 변환 토글 노출
-  const has9Yeol = myPlayer?.collected.some((c) => c.id === 'm09-yeol') ?? false;
+  // 9월 열끗(국준) 획득 시 끗/쌍피 선택 모달 (rules-final.md §1-5)
+  // raw broadcast view 전달 — phase별 displayView 변화 race 방지 (상대 turn 시 잘못 trigger 차단)
+  const myPlayerRaw = view.players.find((p) => p.userId === view.myUserId);
+  const nineYeol = useNineYeolDecision(view, myPlayerRaw);
   const my9YeolAsSsangPi = myPlayer?.flags?.nineYeolAsSsangPi ?? false;
-  async function toggle9Yeol() {
-    const r = await emitWithAck('game:toggle-9yeol', { value: !my9YeolAsSsangPi });
-    if (!r.ok) toast.error(r.error);
-  }
 
   // 쇼당 선언 — 3인+ 모드, 본인 턴에만 활성화 (친구간 협의 룰)
   const canDeclareShodang = isMyTurn && effectiveView.players.length >= 3;
@@ -127,6 +181,14 @@ export function GameView({
     return new Set(getMatchableCardsFromHand(myPlayer.hand, effectiveView.field).map((c) => c.id));
   }, [myPlayer?.hand, effectiveView.field, isMyTurn]);
 
+  // 테스트 모드 트리거 카드 — preset 명시된 myHand 카드들이 손패에 있으면 강조
+  const triggerIds = useMemo(() => {
+    if (!effectiveView.testMode || !effectiveView.testPreset) return undefined;
+    const setup = PRESETS[effectiveView.testPreset];
+    if (!setup?.myHand) return undefined;
+    return new Set(setup.myHand);
+  }, [effectiveView.testMode, effectiveView.testPreset]);
+
   // 턴 시간 카운트다운 — server가 turn timer 관리 (자동 발동 포함).
   // 클라는 broadcast의 turnStartedAt + currentTurnLimitSec으로 모든 player turn 카운트 표시.
   // 1인 AI 모드는 server에서 timer skip (turnStartedAt undefined) → 카운트 X.
@@ -135,23 +197,113 @@ export function GameView({
   // 자동 발동 2회+ player에게만 5초 단축 표시 (server가 currentTurnLimitSec 5로 broadcast)
   const isShortened =
     remainingSec !== null && (effectiveView.currentTurnLimitSec ?? 0) <= 5;
-  // 멀티 모드 play-card emit + needsSelection 모달 처리 (Phase 3 후, rules-final.md §1-6)
-  const {
-    pendingPick: pendingMultiPick,
-    emitPlayCard: emitPlayCardMulti,
-    handlePick: handleMultiPick,
-    cancelPick: cancelMultiPick,
-  } = useMultiPlayCard(myPlayer);
+
+  // 게임 도중 어떤 player든 흔들기/폭탄 적용 시 EventOverlay 발화 (shookMonths/bombs 변화 감지).
+  // 게임 시작 시 모달은 rules-final.md §4 개정으로 제거됨 — pending=false 항상.
+  useShakeBombFireTrigger(displayView, false);
+  // 총통 발동 시 EventOverlay 발화 (모든 player 동시)
+  useChongtongFireTrigger(displayView);
 
   function handlePlayCardWithPeek(cardId: string) {
-    // 클릭 카드 잠시 확대 후 server 액션 emit
+    // rules-final.md §4 — 흔들기 게임 도중 발동.
+    // 같은 month 3장 보유 + 그 월 흔들기 미선언 + 본인 turn → 흔들기 모달.
+    const card = myPlayer?.hand?.find((c) => c.id === cardId);
+    // 폭탄/조커 카드는 흔들기 모달 발동 X (createBombCard month=1이라 1월 카드와 충돌 방지)
+    if (card && !card.isBomb && !card.isJoker && isMyTurn) {
+      const sameMonthCards = (myPlayer?.hand ?? []).filter(
+        (c) => !c.isBomb && !c.isJoker && c.month === card.month,
+      );
+      const shookMonths = (myPlayer?.flags?.shookMonths ?? []) as number[];
+      const monthAlreadyShook = shookMonths.includes(card.month);
+      if (sameMonthCards.length === 3 && !monthAlreadyShook) {
+        // 흔들기 모달 — onShakeAccept / onShakeDecline에서 후속 처리
+        setPendingShake({ cardId, month: card.month, cards: sameMonthCards });
+        return;
+      }
+    }
+
+    // 일반 흐름
+    doPlayCardEmit(cardId, false);
+  }
+
+  /** localPeakingId 즉시 set + server emit + fallback timeout 1s. */
+  function doPlayCardEmit(cardId: string, declineBomb: boolean) {
     setLocalPeakingId(cardId);
     if (peakingTimerRef.current) clearTimeout(peakingTimerRef.current);
+    void emitPlayCardMulti(cardId, undefined, undefined, declineBomb);
     peakingTimerRef.current = setTimeout(() => {
       setLocalPeakingId(null);
-      void emitPlayCardMulti(cardId);
-    }, HAND_PEAK_DURATION * 1000);
+    }, 1000);
   }
+
+  /** 흔들기 모달 [O] — server에 선언 + 바닥 매칭 검사 → 폭탄 모달 또는 1장 내기 */
+  async function onShakeAccept() {
+    if (!pendingShake) return;
+    const { cardId, month } = pendingShake;
+    setPendingShake(null);
+    const r = await emitWithAck('game:declare-shake', { month });
+    if (!r.ok) {
+      toast.error(r.error);
+      return;
+    }
+    // 흔들기 선언 후 바닥에 같은 month 카드 있으면 폭탄 모달
+    const fieldCard = effectiveView.field.find((c) => c.month === month);
+    const handCards = (myPlayer?.hand ?? []).filter((c) => c.month === month);
+    if (fieldCard) {
+      setPendingBomb({ cardId, month, handCards, fieldCard });
+      return;
+    }
+    // 바닥 매칭 X — 일반 1장 내기 (흔들기 ×2만)
+    doPlayCardEmit(cardId, false);
+  }
+
+  /** 흔들기 모달 [X] — 일반 매칭 (×2 X). 폭탄 자동 발동도 안 됨. */
+  function onShakeDecline() {
+    if (!pendingShake) return;
+    const { cardId } = pendingShake;
+    setPendingShake(null);
+    doPlayCardEmit(cardId, false);
+  }
+
+  /** 폭탄 모달 [폭탄] — server에서 isBomb 자동 발동 (declineBomb=false) */
+  function onBombAccept() {
+    if (!pendingBomb) return;
+    const { cardId } = pendingBomb;
+    setPendingBomb(null);
+    doPlayCardEmit(cardId, false);
+  }
+
+  /** 폭탄 모달 [1장] — declineBomb=true로 server에 전달. 일반 매칭. */
+  function onBombSingle() {
+    if (!pendingBomb) return;
+    const { cardId } = pendingBomb;
+    setPendingBomb(null);
+    doPlayCardEmit(cardId, true);
+  }
+
+  /** 흔들기/폭탄 모달 [취소] — emit X, 모달만 닫음. 손패는 그대로. */
+  function onShakeCancel() {
+    setPendingShake(null);
+  }
+  function onBombCancel() {
+    setPendingBomb(null);
+  }
+
+  // broadcast 도착으로 Phase 1-A peak 시작되면 localPeakingId clear — peak 효과는
+  // multiPeekingId에서 이어받음. 사용자 시각에는 클릭 즉시 확대 → 비행까지 한 번만 확대.
+  useEffect(() => {
+    if (multiPeekingId !== null && localPeakingId !== null) {
+      setLocalPeakingId(null);
+      if (peakingTimerRef.current) clearTimeout(peakingTimerRef.current);
+    }
+  }, [multiPeekingId, localPeakingId]);
+
+  // Step 모드 OFF 토글 시 진행 중 모달 즉시 해제 — 사용자 click 대기 promise resolve.
+  useEffect(() => {
+    if (!stepMode && awaitingStep) {
+      continueStep();
+    }
+  }, [stepMode, awaitingStep, continueStep]);
 
   const others = effectiveView.players.filter((p) => p.userId !== effectiveView.myUserId);
 
@@ -239,6 +391,7 @@ export function GameView({
         onPlayCard={handlePlayCardWithPeek}
         compact={isCompact}
         peakingCardId={effectivePeakingId ?? null}
+        triggerIds={triggerIds}
       />
     </section>
   ) : (
@@ -283,10 +436,66 @@ export function GameView({
           </div>
         )}
 
-        {/* 테스트 모드 활성 시 — 명시적 배너 (호스트가 wait 모달에서 토글, 게임 중 항상 표시) */}
+        {/* 테스트 모드 한정 — 상단 중앙 토글 버튼 (5개 컨트롤 hide/show. 추후 제거) */}
         {view.testMode && (
-          <div className="pointer-events-none absolute left-2 top-2 z-40 rounded border border-rose-500/60 bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-100 backdrop-blur-sm">
-            🧪 TEST MODE
+          <button
+            onClick={() => setTestControlsVisible((v) => !v)}
+            className="absolute left-1/2 top-2 z-50 -translate-x-1/2 rounded-full border border-rose-500/60 bg-rose-950/90 px-2 py-0.5 text-[12px] font-bold text-rose-100 hover:bg-rose-900/90"
+            title="시나리오 컨트롤 + 로비/설정 5개 토글"
+          >
+            {testControlsVisible ? '🙈 숨기기' : '🎛️ 컨트롤'}
+          </button>
+        )}
+
+        {/* 테스트 모드 활성 시 — 명시적 배너 + 호스트면 시나리오 변경/재시작 컨트롤 */}
+        {view.testMode && testControlsVisible && (
+          <div className="absolute left-2 top-2 z-40 flex items-center gap-2">
+            <span className="pointer-events-none rounded border border-rose-500/60 bg-rose-500/20 px-2 py-0.5 text-[15px] font-bold text-rose-100 backdrop-blur-sm">
+              🧪 시나리오: {view.testPreset ? PRESET_LABELS[view.testPreset] : '없음'}
+            </span>
+            {isHost && (
+              <>
+                <select
+                  value={view.testPreset ?? 'default'}
+                  onChange={async (e) => {
+                    const r = await emitWithAck('game:set-test-preset', {
+                      preset: e.target.value as PresetId,
+                    });
+                    if (!r.ok) toast.error(r.error);
+                  }}
+                  className="max-w-[300px] truncate rounded border border-rose-500/60 bg-rose-950/80 px-2 py-0.5 text-[15px] font-bold text-rose-100 hover:border-rose-400"
+                  title="다른 시나리오 선택 — 즉시 재시작"
+                >
+                  {(Object.keys(PRESET_LABELS) as PresetId[]).map((id) => (
+                    <option key={id} value={id}>
+                      {PRESET_LABELS[id]}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={async () => {
+                    const r = await emitWithAck('game:test-restart');
+                    if (!r.ok) toast.error(r.error);
+                  }}
+                  className="rounded border border-rose-500/60 bg-rose-500/30 px-2 py-0.5 text-[15px] font-bold text-rose-100 hover:bg-rose-500/50"
+                  title="같은 시나리오로 즉시 다시 시작"
+                >
+                  🔁 같은 시나리오 다시
+                </button>
+                <TestSpeedSelect />
+                <button
+                  onClick={() => setStepModeEnabled((v) => !v)}
+                  className={`rounded border px-2 py-0.5 text-[15px] font-bold ${
+                    stepModeEnabled
+                      ? 'border-amber-400/60 bg-amber-500/30 text-amber-100 hover:bg-amber-500/50'
+                      : 'border-felt-700/60 bg-felt-950/80 text-felt-200 hover:border-felt-500'
+                  }`}
+                  title="Step 모드 — ON이면 phase마다 click 대기, OFF면 자동 진행"
+                >
+                  {stepModeEnabled ? '⏸ Step ON' : '▶ Step OFF'}
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -353,8 +562,38 @@ export function GameView({
             field={effectiveView.field}
             deckCount={effectiveView.deckCount}
             flippingCardId={effectiveFlippingId ?? null}
+            flippingPhase={multiFlippingPhase}
             isCompact={isCompact}
           />
+          {/* 본인 누적 배수 + 고 횟수 — 게임판 좌측 하단 (사이드바 총점수와 같은 높이) */}
+          {(() => {
+            const m = computeMultiplier(myPlayer);
+            const goN = myPlayer?.goCount ?? 0;
+            if (m <= 1 && goN === 0) return null;
+            return (
+              <div className="pointer-events-none absolute bottom-2 left-2 flex items-end gap-2">
+                {goN > 0 && (
+                  <span
+                    className={`rounded-full bg-rose-500/80 px-2 py-0.5 font-black text-white shadow-[0_0_8px_rgba(244,63,94,0.6)] ${
+                      isCompact ? 'text-base' : 'text-2xl'
+                    }`}
+                  >
+                    {goN}고
+                  </span>
+                )}
+                {m > 1 && (
+                  <span
+                    title={multiplierBreakdown(myPlayer)}
+                    className={`font-black text-amber-300 drop-shadow-[0_0_8px_rgba(252,211,77,0.7)] ${
+                      isCompact ? 'text-3xl' : 'text-5xl'
+                    }`}
+                  >
+                    ×{m}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* PC 우측 화상 사이드바 — col 3 row 2만 (게임판 영역, 점수판과 같은 행) */}
@@ -370,8 +609,8 @@ export function GameView({
         {/* 하단 손패 — 모바일: col 2만, PC: col-span-2 (점수판+게임판) */}
         {handSection}
 
-        {/* PC 우측 상단 — 로비/설정 버튼 fixed */}
-        {!isCompact && (
+        {/* PC 우측 상단 — 로비/설정 버튼 fixed. testMode면 토글로 숨김 가능 */}
+        {!isCompact && (!view.testMode || testControlsVisible) && (
           <div className="pointer-events-auto fixed right-3 top-3 z-30 flex gap-1.5">
             <button
               onClick={() => void onLeave()}
@@ -431,9 +670,6 @@ export function GameView({
           mediaSettings={mediaSettings}
           playerSection={
             <PlayerActions
-              has9Yeol={has9Yeol}
-              my9YeolAsSsangPi={my9YeolAsSsangPi}
-              onToggle9Yeol={() => void toggle9Yeol()}
               canDeclareShodang={canDeclareShodang}
               onDeclareShodang={() => {
                 setSettingsOpen(false);
@@ -465,13 +701,66 @@ export function GameView({
         {/* 채팅 모달 */}
         <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
 
-        {/* 매칭 카드 종류 다른 2장일 때 사용자 선택 모달 (rules-final.md §1-6) */}
+        {/* 매칭 카드 종류 다른 2장일 때 사용자 선택 모달 (rules-final.md §1-6).
+            Phase 1~3 진행 완료 (animationPhase==='idle') + 본인 turn 시 발화.
+            상대 turn에 phase별 stale view로 잘못 표시되는 케이스 차단. */}
         <TargetPickerModal
-          open={pendingMultiPick !== null}
+          open={pendingMultiPick !== null && animationPhase === 'idle' && isMyTurn}
           handCard={pendingMultiPick?.handCard ?? null}
           candidates={pendingMultiPick?.candidates ?? []}
           onPick={handleMultiPick}
           onCancel={cancelMultiPick}
+        />
+
+        {/* 게임 도중 흔들기 선언 모달 (rules-final.md §4-1) — 카드 클릭 시 발동 */}
+        <ShakeDecisionModal
+          open={pendingShake !== null}
+          month={pendingShake?.month ?? 0}
+          cards={pendingShake?.cards ?? []}
+          onShake={() => void onShakeAccept()}
+          onDecline={onShakeDecline}
+          onCancel={onShakeCancel}
+        />
+
+        {/* 폭탄 발동 선택 모달 (rules-final.md §4-2 ①/②) — 흔들기 O + 바닥 매칭 후 */}
+        <BombChoiceModal
+          open={pendingBomb !== null}
+          month={pendingBomb?.month ?? 0}
+          handCards={pendingBomb?.handCards ?? []}
+          fieldCard={pendingBomb?.fieldCard}
+          onBomb={onBombAccept}
+          onSingle={onBombSingle}
+          onCancel={onBombCancel}
+        />
+
+        {/* winScore 도달 시 go/stop 선택 모달 (rules-final.md §5).
+            server pendingGoStop 본인일 때만 노출. animation phase 완료 후 발화. */}
+        <GoStopModal
+          open={
+            view.pendingGoStop?.playerId === view.myUserId &&
+            animationPhase === 'idle'
+          }
+          score={view.pendingGoStop?.score ?? 0}
+          goCount={myPlayerRaw?.goCount ?? 0}
+          onGo={async () => {
+            const r = await emitWithAck('game:action', { type: 'declare-go' });
+            if (!r.ok && 'error' in r) toast.error(r.error);
+          }}
+          onStop={async () => {
+            const r = await emitWithAck('game:action', { type: 'declare-stop' });
+            if (!r.ok && 'error' in r) toast.error(r.error);
+          }}
+        />
+
+        {/* 9월 열끗(국준) 획득 시 끗/쌍피 선택 모달 (rules-final.md §1-5).
+            Phase 3 완료 후 + 다른 모달이 닫힌 후에만 발화 */}
+        <NineYeolPickerModal
+          open={
+            nineYeol.open &&
+            animationPhase === 'idle' &&
+            pendingMultiPick === null
+          }
+          onPick={nineYeol.pick}
         />
 
         {/* 모바일 화상 풀스크린 모달 — render prop으로 LiveKit context 안 컴포넌트 호출 */}
@@ -479,8 +768,76 @@ export function GameView({
           open: videoModalOpen,
           onClose: () => setVideoModalOpen(false),
         })}
+
+        {/* step 모드 — 각 sub-phase 사이 사용자 click 대기 모달 (testMode + 호스트만) */}
+        {stepMode && awaitingStep && (
+          <StepDebugModal label={awaitingStep} onContinue={continueStep} />
+        )}
       </div>
     </LayoutGroup>
     </AnimationPhaseContext.Provider>
+  );
+}
+
+/**
+ * step 모드 디버그 모달 — 각 sub-phase 끝에서 사용자 click 대기.
+ *
+ * 화면 중앙 하단 고정 + Space 키 단축키로도 진행 가능. testMode + 호스트일 때만 노출.
+ */
+function StepDebugModal({
+  label,
+  onContinue,
+}: {
+  label: string;
+  onContinue: () => void;
+}) {
+  // Space 키 단축키
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        onContinue();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onContinue]);
+
+  return (
+    <div className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
+      <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-amber-400/60 bg-felt-950/95 px-4 py-2 shadow-xl backdrop-blur-sm">
+        <span className="text-sm font-bold text-amber-200">{label}</span>
+        <button
+          onClick={onContinue}
+          className="rounded border border-amber-400/60 bg-amber-500/30 px-3 py-1 text-sm font-bold text-amber-100 hover:bg-amber-500/50 active:scale-95"
+          title="Space 키로도 진행 가능"
+        >
+          다음 ▶ (Space)
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 테스트 모드 한정 — 애니메이션 배속 select.
+ * RoomLobbyModal에 있는 컨트롤을 GameView에도 노출해 게임 중 배속 조정 가능.
+ */
+function TestSpeedSelect() {
+  const speed = useDevTestStore((s) => s.animationSpeed);
+  const setSpeed = useDevTestStore((s) => s.setAnimationSpeed);
+  return (
+    <select
+      value={speed}
+      onChange={(e) => setSpeed(Number(e.target.value) as typeof speed)}
+      className="rounded border border-rose-500/60 bg-rose-950/80 px-2 py-0.5 text-[15px] font-bold text-rose-100 hover:border-rose-400"
+      title="애니메이션 배속 — 모든 sec() 적용 duration에 영향"
+    >
+      {ANIMATION_SPEED_OPTIONS.map((s) => (
+        <option key={s} value={s}>
+          {s}× 배속
+        </option>
+      ))}
+    </select>
   );
 }

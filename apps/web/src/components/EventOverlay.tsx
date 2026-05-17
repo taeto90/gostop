@@ -2,11 +2,14 @@ import { useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { type GameEvent, useEventOverlayStore } from '../stores/eventOverlayStore.ts';
 import { playSound, type SoundName } from '../lib/sound.ts';
+import { applySpeed } from '../lib/animationTiming.ts';
 
 /**
  * 이벤트 → 사운드 매핑. 새 사운드 파일 추가 시 여기에 등록.
  * 현재는 기존 사운드 자산만 사용 (boom / card-place / score-up / game-end / emoji-react).
  */
+// 폭탄/흔들기 사운드는 EventOverlay에서 발화 X — useMultiTurnSequence의 Phase 1-B 끝 시점에
+// 직접 'boom' 사운드 재생 (rules-final.md §4 — 폭탄 발동 = 3장 한 번에 placed 시점).
 const EVENT_SOUND_MAP: Partial<Record<GameEvent, SoundName>> = {
   ppeok: 'card-place',
   'first-ppeok': 'score-up',
@@ -14,12 +17,9 @@ const EVENT_SOUND_MAP: Partial<Record<GameEvent, SoundName>> = {
   ttadak: 'score-up',
   jjok: 'score-up',
   sweep: 'score-up',
-  bomb: 'boom',
-  shake: 'boom',
   chongtong: 'game-end',
   go: 'score-up',
   stop: 'score-up',
-  bak: 'boom',
   myungttadak: 'score-up',
   nagari: 'game-end',
   shodang: 'emoji-react',
@@ -82,7 +82,7 @@ export function EventOverlay() {
     if (!event) return;
     const sound = EVENT_SOUND_MAP[event];
     if (sound) playSound(sound);
-    const timer = setTimeout(clear, HIDE_DURATION_MS);
+    const timer = setTimeout(clear, applySpeed(HIDE_DURATION_MS / 1000) * 1000);
     return () => clearTimeout(timer);
   }, [event, clear]);
 

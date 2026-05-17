@@ -2,7 +2,12 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { AiDifficulty, RoomView } from '@gostop/shared';
+import type { AiDifficulty, PresetId, RoomView } from '@gostop/shared';
+import {
+  ANIMATION_SPEED_OPTIONS,
+  useDevTestStore,
+  type AnimationSpeed,
+} from '../../stores/devTestStore.ts';
 import { useChatStore } from '../../stores/chatStore.ts';
 import { useRoomStore } from '../../stores/roomStore.ts';
 import { toast } from '../../stores/toastStore.ts';
@@ -46,8 +51,11 @@ export function RoomLobbyModal({ view }: RoomLobbyModalProps) {
   const [chatOpen, setChatOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [aiSetupOpen, setAiSetupOpen] = useState(false);
-  // 테스트 모드 (호스트만, 추후 제거) — 손패 1장 + 바닥 1장
+  // 테스트 모드 (호스트만) — preset 없으면 손패 1장 + 바닥 1장. preset 명시 시 카드 고정 분배
   const [testMode, setTestMode] = useState(view.testMode ?? false);
+  const [testPreset, setTestPreset] = useState<PresetId>('default');
+  const animationSpeed = useDevTestStore((s) => s.animationSpeed);
+  const setAnimationSpeed = useDevTestStore((s) => s.setAnimationSpeed);
 
   const isHost = view.hostUserId === view.myUserId;
   const canStart = view.players.length >= 1 && view.players.length <= 5;
@@ -60,7 +68,10 @@ export function RoomLobbyModal({ view }: RoomLobbyModalProps) {
 
   // ===== actions =====
   async function startGame() {
-    const r = await emitWithAck('game:start', { testMode });
+    const r = await emitWithAck('game:start', {
+      testMode,
+      testPreset: testMode ? testPreset : undefined,
+    });
     if (!r.ok) toast.error(r.error);
   }
 
@@ -178,8 +189,18 @@ export function RoomLobbyModal({ view }: RoomLobbyModalProps) {
 
               <MediaModeBadge mode={view.rules?.mediaMode ?? 'video'} />
 
-              {isHost && (
+              {/* 테스트 모드 컨트롤 — dev 빌드에서만 노출 (Vercel/Railway production은 hide) */}
+              {import.meta.env.DEV && isHost && (
                 <TestModeToggle checked={testMode} onChange={setTestMode} />
+              )}
+              {import.meta.env.DEV && isHost && testMode && (
+                <TestPresetSelect value={testPreset} onChange={setTestPreset} />
+              )}
+              {import.meta.env.DEV && isHost && testMode && (
+                <AnimationSpeedSelect
+                  value={animationSpeed}
+                  onChange={setAnimationSpeed}
+                />
               )}
 
               {gwangPaliCount > 0 && (
@@ -711,7 +732,7 @@ function TestModeToggle({
   return (
     <label className="flex items-center justify-between gap-2 rounded-lg border border-rose-500/40 bg-rose-950/30 px-3 py-2 text-xs text-rose-200">
       <span>
-        🧪 <b>테스트 모드</b> — 손패 1장만 분배 (흐름 확인용, 추후 제거)
+        🧪 <b>테스트 모드</b> — preset으로 카드 고정 분배 (이펙트 검증용)
       </span>
       <input
         type="checkbox"
@@ -719,6 +740,101 @@ function TestModeToggle({
         onChange={(e) => onChange(e.target.checked)}
         className="h-4 w-4 cursor-pointer accent-rose-400"
       />
+    </label>
+  );
+}
+
+export const PRESET_LABELS: Record<PresetId, string> = {
+  default: '기본 (정상 분배)',
+  // §1-6 매칭 케이스
+  jjok: '쪽 (Case 1) — 1월 광',
+  'case2-just-eat': '그냥 먹기 (Case 2) — 2월',
+  ppeok: '뻑/설사 (Case 3) — 5월',
+  'case4-pick-modal': '선택 모달 (Case 4) — 4월',
+  'case4-double': '선택 모달 × 2 — 손패 1월 + 더미 2월',
+  ddak: '따닥 (Case 5) — 3월',
+  'self-ppeok': '자뻑 회수 (Case 6) — 7월',
+  // §1-1 광 점수
+  'gwang-3': '광 3장 (3점)',
+  'gwang-3-bisam': '비삼광 (2점) — 12월 비광 끼움',
+  'gwang-4': '광 4장 (4점)',
+  'gwang-5': '광 5장 (15점 + 광박)',
+  // §1-3 띠 점수
+  hongdan: '홍단 3장 (3점)',
+  cheongdan: '청단 3장 (3점)',
+  chodan: '초단 3장 (3점)',
+  // §1-2 끗 보너스
+  godori: '고도리 (1·4·8월 새 3장 +5점)',
+  // §1-5 9월 열끗 변환
+  'nine-yeol-toggle': '9월 열끗 ↔ 쌍피 변환',
+  // 3개 모달 모두 — 손패+더미 매칭 모달 + 국준 모달
+  'three-modals': '3모달 — 손패+더미 매칭 + 국준 (m09-yeol 선택)',
+  // §2 박
+  'pi-pak': '피박 — 본인 피 12장',
+  'gwang-pak': '광박 — 본인 광 4장',
+  'myung-pak': '멍박 — 본인 끗 5장',
+  // §4 흔들기/폭탄/총통
+  shake: '흔들기 — 8월 3장',
+  bomb: '폭탄 — 6월 3장 + 바닥 1',
+  chongtong: '총통 — 9월 4장 손패',
+  gukjoon: '국준 — 9월 4장 (옵션)',
+  // §5 고/스톱
+  'go-stop': '고/스톱 — 4점 도달 모달',
+  gobak: '고박 — 4광 + 고 누적',
+  // §6 특수
+  ssaktsseuli: '싹쓸이 — 8월 빈 바닥',
+  nagari: '나가리 — 3뻑 직전',
+  myungdda: '멍따 — 12월 광 + 봇 광 0',
+  'last-turn-sweep': '마지막턴 싹쓸이 — 10월',
+  'joker-flip': '조커 — RoomRules에서 jokerCount 설정',
+};
+
+function TestPresetSelect({
+  value,
+  onChange,
+}: {
+  value: PresetId;
+  onChange: (next: PresetId) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1 rounded-lg border border-rose-500/40 bg-rose-950/30 px-3 py-2 text-xs text-rose-200">
+      <span>📋 시나리오</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as PresetId)}
+        className="rounded bg-rose-950/60 px-2 py-1 text-rose-100"
+      >
+        {(Object.keys(PRESET_LABELS) as PresetId[]).map((id) => (
+          <option key={id} value={id}>
+            {PRESET_LABELS[id]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function AnimationSpeedSelect({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (next: AnimationSpeed) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-2 rounded-lg border border-rose-500/40 bg-rose-950/30 px-3 py-2 text-xs text-rose-200">
+      <span>⏩ 애니메이션 속도</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value) as AnimationSpeed)}
+        className="rounded bg-rose-950/60 px-2 py-1 text-rose-100"
+      >
+        {ANIMATION_SPEED_OPTIONS.map((s) => (
+          <option key={s} value={s}>
+            {s}× {s === 1 ? '(정상)' : s < 1 ? '(느림)' : '(빠름)'}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }

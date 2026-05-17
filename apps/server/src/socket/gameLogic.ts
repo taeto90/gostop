@@ -6,7 +6,8 @@
  */
 
 import type { AiDifficulty, Card, Player, Room } from '@gostop/shared';
-import { dealNewGame, detectChongtong, detectShakesAndBombs } from '@gostop/shared';
+import { dealNewGame, detectChongtong, detectShakesAndBombs, PRESETS } from '@gostop/shared';
+import { startGameLog } from './gameLog.ts';
 
 /** AI 봇 userId prefix — 일반 사용자와 구분 */
 export const AI_BOT_PREFIX = 'ai-bot-';
@@ -170,24 +171,35 @@ export function startGameInRoom(room: Room): void {
   distributeGwangPali(room);
 
   const playerIds = room.players.map((p) => p.id);
+  // 'default' preset도 PRESETS['default'] = {} 로 dealWithPreset에 전달 →
+  // 빈 setup이라 명시 카드 없이 셔플 분배 (HAND_SIZE 10/7 정상 분배).
+  // 이전엔 default 예외로 dealOnce(testMode=1장)에 빠져 게임이 즉시 종료되는 버그.
+  const presetSetup =
+    room.testMode && room.testPreset
+      ? PRESETS[room.testPreset]
+      : undefined;
   const dealt = dealNewGame(playerIds, undefined, {
     jokerCount: room.rules.jokerCount,
     testMode: room.testMode,
+    preset: presetSetup,
   });
 
   for (const player of room.players) {
     player.hand = dealt.hands[player.id]!;
-    player.collected = [];
+    // preset 모드면 명시된 collected 적용, 아니면 빈 배열
+    player.collected = dealt.collected?.[player.id] ?? [];
     player.score = 0;
     player.goCount = 0;
-    // 게임 시작 시 흔들기/폭탄 자동 적용 — AI 봇 + 사람 모두.
-    // 추후 사람에게는 ShakeBombModal로 선택권 제공 가능 (현재는 90% case 커버).
+    // 게임 시작 시 흔들기/폭탄 검출 — AI 봇은 자동 적용, 사람은 ShakeBombModal로 선택권 부여.
+    // (정통 룰: 흔들기는 본인 선언 옵션. 항상 ×2가 유리한 게 아니라 매칭 전략과 trade-off)
     const detect = detectShakesAndBombs(player.hand);
+    const isAI = isAIBot(player.id);
     player.flags = {
-      shookMonths: [...detect.shakeMonths],
-      bombs: detect.bombMonths.length,
+      shookMonths: isAI ? [...detect.shakeMonths] : [],
+      bombs: isAI ? detect.bombMonths.length : 0,
       ppeoksCaused: 0,
     };
+    // 사람은 모달 응답까지 대기 — 미응답 = 자동 미적용 (스킵). 클라가 응답 안 보내도 게임 진행 가능
   }
 
   // 총통 검사 — 시작 시 손패 같은 월 4장 → 즉시 승리 (선부터 우선)
@@ -201,6 +213,8 @@ export function startGameInRoom(room: Room): void {
 
   room.stuckOwners = {};
   room.chongtongUserId = chongtongUserId;
+  room.turnSeq = 0;
+  room.gameInstanceId = (room.gameInstanceId ?? 0) + 1; // 매 startGameInRoom +1
   room.phase = chongtongUserId ? 'ended' : 'playing';
   room.game = {
     field: dealt.field,
@@ -214,6 +228,9 @@ export function startGameInRoom(room: Room): void {
   if (chongtongUserId) {
     console.log(`[room:${room.id}] 총통 발동: ${chongtongUserId}`);
   }
+
+  // dev 로그 시작 — production은 no-op
+  startGameLog(room);
 }
 
 /**
@@ -244,16 +261,19 @@ export function reconvertSpectatorsToPlayers(room: Room): void {
 /**
  * 상대로부터 피 N장 가져오기 (뻑/자뻑/따닥/쪽/싹쓸이/폭탄 보너스).
  * 일반 피 우선, 부족하면 쌍피.
+ *
+ * @returns 빼앗은 카드 상세 — client Phase 5 시각효과용 (상대 collected → 본인 collected 비행)
  */
 export function stealPiFromOpponents(
   room: Room,
   fromUserId: string,
   count: number,
-): void {
+): { from: string; to: string; cardId: string }[] {
   const opponents = room.players.filter((p) => p.id !== fromUserId);
   const from = room.players.find((p) => p.id === fromUserId);
-  if (!from) return;
+  if (!from) return [];
 
+  const stealLog: { from: string; to: string; cardId: string }[] = [];
   let remaining = count;
   for (const op of opponents) {
     if (remaining <= 0) break;
@@ -267,5 +287,9 @@ export function stealPiFromOpponents(
     op.collected = op.collected.filter((c: Card) => !takenIds.has(c.id));
     from.collected = [...from.collected, ...taken];
     remaining -= taken.length;
+    for (const c of taken) {
+      stealLog.push({ from: op.id, to: fromUserId, cardId: c.id });
+    }
   }
+  return stealLog;
 }

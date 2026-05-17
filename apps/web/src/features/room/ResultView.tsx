@@ -10,6 +10,7 @@ import { useElementSize } from '../../hooks/useElementSize.ts';
 import { isCompactWidth, RESULT_CARD_WIDTH } from '../../lib/layoutConstants.ts';
 import { buildRankedPlayers } from './result/helpers.ts';
 import { Badge, CollectedGroups, FlagBadge } from './result/Badges.tsx';
+import { toast } from '../../stores/toastStore.ts';
 
 interface ResultViewProps {
   view: RoomView;
@@ -101,12 +102,23 @@ export function ResultView({
     onStartNextRound?.();
   }
 
+  /** 테스트 모드 한정 — 같은 시나리오로 즉시 재시작 (호스트). 로비 거치지 않음. */
+  async function testRestart() {
+    const r = await emitWithAck('game:test-restart');
+    if (!r.ok) toast.error(r.error);
+  }
+
   return (
     <div
       ref={rootRef}
-      className="bg-felt flex h-full flex-col overflow-y-auto p-4 text-felt-50"
+      className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-black/70 p-3 text-felt-50 backdrop-blur-sm"
     >
-      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col">
+      <motion.div
+        initial={{ scale: 0.92, opacity: 0, y: 16 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 220, damping: 24 }}
+        className="my-auto flex w-full max-w-3xl flex-col rounded-2xl border-2 border-amber-400/60 bg-gradient-to-b from-felt-800 to-felt-950 p-4 shadow-2xl"
+      >
         {/* 헤더 */}
         <motion.div
           initial={{ y: -20, opacity: 0 }}
@@ -264,6 +276,7 @@ export function ResultView({
         </div>
 
         {/* 액션 버튼 — 호스트는 "🎮 게임으로" / 비호스트는 onDismiss 있으면 "닫기" */}
+        {/* testMode 한정: 호스트에게 "🔁 같은 시나리오 다시" 버튼 — 로비 거치지 않고 즉시 재시작 */}
         <div className="mt-4 flex justify-center gap-2">
           <button
             onClick={leaveRoom}
@@ -279,6 +292,14 @@ export function ResultView({
               🎮 게임으로
             </button>
           )}
+          {isHost && view.testMode && (
+            <button
+              onClick={() => void testRestart()}
+              className="rounded bg-rose-500 px-6 py-2 font-bold text-white shadow-lg hover:bg-rose-400"
+            >
+              🔁 같은 시나리오 다시
+            </button>
+          )}
           {isHost && (
             <button
               onClick={nextRound}
@@ -288,7 +309,7 @@ export function ResultView({
             </button>
           )}
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

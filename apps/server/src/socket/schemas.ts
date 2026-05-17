@@ -79,11 +79,51 @@ export const Toggle9YeolSchema = z.object({
 
 const AiDifficultySchema = z.enum(['easy', 'medium', 'hard']);
 
+const PresetIdSchema = z.enum([
+  'default',
+  'jjok',
+  'ddak',
+  'ppeok',
+  'self-ppeok',
+  'chongtong',
+  'ssaktsseuli',
+  'bomb',
+  'shake',
+  'nagari',
+  'myungdda',
+  'gukjoon',
+  'pi-pak',
+  'gwang-pak',
+  'myung-pak',
+  'last-turn-sweep',
+  'joker-flip',
+  'gwang-3',
+  'gwang-3-bisam',
+  'gwang-4',
+  'gwang-5',
+  'hongdan',
+  'cheongdan',
+  'chodan',
+  'godori',
+  'nine-yeol-toggle',
+  'case2-just-eat',
+  'case4-pick-modal',
+  'case4-double',
+  'go-stop',
+  'gobak',
+]);
+
+export const SetTestPresetSchema = z.object({
+  preset: PresetIdSchema,
+});
+
 export const GameStartSchema = z.object({
   // 호스트가 명시한 봇 난이도 — length만큼 봇 합류. player + bot ≤ 5.
   botDifficulties: z.array(AiDifficultySchema).max(4).optional(),
-  /** 테스트 모드 — 손패 1장 + 바닥 1장 분배 (흐름 검증용, 추후 제거) */
+  /** 테스트 모드 — preset 없으면 손패 1장 + 바닥 1장 (흐름 검증용) */
   testMode: z.boolean().optional(),
+  /** 테스트 모드 preset (testMode일 때만 적용). 명시 카드 고정 분배 */
+  testPreset: PresetIdSchema.optional(),
 });
 
 export const AddBotsSchema = z.object({
@@ -96,6 +136,7 @@ export const GameActionSchema = z.discriminatedUnion('type', [
     cardId: z.string(),
     targetAfterHand: z.string().optional(),
     targetAfterDraw: z.string().optional(),
+    declineBomb: z.boolean().optional(),
   }),
   z.object({ type: z.literal('choose-flip'), chosenCardId: z.string() }),
   z.object({ type: z.literal('declare-go') }),

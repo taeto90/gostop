@@ -7,12 +7,19 @@
  */
 
 import type { Room } from '@gostop/shared';
-import { awardBombBonusCards, chooseAiCard, executeTurn } from '@gostop/shared';
+import {
+  awardBombBonusCards,
+  calculateScore,
+  chooseAiCard,
+  executeTurn,
+} from '@gostop/shared';
 
 import type { RoomStore } from '../rooms/RoomStore.ts';
 import { findPlayer } from '../rooms/playerOps.ts';
 import { broadcastRoomState, type IO } from './broadcast.ts';
 import { isAIBot, stealPiFromOpponents } from './gameLogic.ts';
+import { applyGo, applyStop } from './turnFlow.ts';
+import { captureCounts, endGameLog, logPlayCard } from './gameLog.ts';
 
 /**
  * AI 봇이 카드를 내기 전 대기 시간 (ms).
@@ -31,6 +38,8 @@ const AI_TURN_DELAY_MS =
 export function progressAITurnIfAny(io: IO, room: Room, store: RoomStore): void {
   if (!room.game) return;
   if (room.phase !== 'playing') return;
+  // go/stop 결정 대기 중이면 카드 진행 X — autoDecideGoStopForAI가 처리
+  if (room.pendingGoStop) return;
   const turnPlayerId = room.game.turnPlayerId;
   if (!isAIBot(turnPlayerId)) return;
 
@@ -63,6 +72,10 @@ export function progressAITurnIfAny(io: IO, room: Room, store: RoomStore): void 
     if (!cardId) return;
 
     try {
+      // dev 로그: 액션 직전 state snapshot
+      const prevTurnPlayerId = room.game.turnPlayerId;
+      const prevCounts = captureCounts(room);
+
       const isLastTurn = ai.hand.length === 1;
       const result = executeTurn(
         {
@@ -78,6 +91,9 @@ export function progressAITurnIfAny(io: IO, room: Room, store: RoomStore): void 
           stuckOwners: room.stuckOwners,
           myActorKey: turnPlayerId,
           bombStealCount: room.rules.bombStealCount,
+          // 흔들기 선언된 month — AI는 startGameInRoom에서 자동 적용 (간단화).
+          // 사람 player는 게임 도중 카드 클릭 시 모달로 선언 (declareShake event).
+          shookMonths: new Set(ai.flags.shookMonths ?? []),
         },
       );
 
@@ -102,24 +118,75 @@ export function progressAITurnIfAny(io: IO, room: Room, store: RoomStore): void 
       room.lastTurnSpecials = result.specials;
       room.lastTurnActorUserId = turnPlayerId;
       room.turnSeq = (room.turnSeq ?? 0) + 1;
+      // history 추가 — 클라 findHandCardObj가 AI hand 마스킹 시 history fallback으로 사용
+      room.game.history = [
+        ...room.game.history,
+        { type: 'play-card', cardId },
+      ];
       if (result.specials.stealPi > 0) {
-        stealPiFromOpponents(room, turnPlayerId, result.specials.stealPi);
+        const stealLog = stealPiFromOpponents(
+          room,
+          turnPlayerId,
+          result.specials.stealPi,
+        );
+        result.specials.stealPiCards = stealLog;
+        room.lastTurnSpecials = result.specials;
       }
-
-      // 다음 턴
-      const idx = room.players.findIndex((p) => p.id === turnPlayerId);
-      const nextIdx = (idx + 1) % room.players.length;
-      room.game.turnPlayerId = room.players[nextIdx]!.id;
 
       // 게임 종료 체크
       const allEmpty = room.players.every((p) => p.hand.length === 0);
-      if (ai.flags.ppeoksCaused >= 3 || allEmpty) {
+      const ended = ai.flags.ppeoksCaused >= 3 || allEmpty;
+      if (ended) {
         room.phase = 'ended';
       }
 
-      broadcastRoomState(io, room);
-      // 다음 턴도 AI면 재귀
-      progressAITurnIfAny(io, room, store);
+      // AI도 winScore 도달 검사 (rules-final.md §5).
+      const winScore = room.rules.winScore;
+      const aiScore = calculateScore(ai.collected, {
+        nineYeolAsSsangPi: ai.flags.nineYeolAsSsangPi ?? false,
+        allowGukJoon: room.rules.allowGukJoon,
+      });
+      const reachedWin = !ended && ai.hand.length > 0 && aiScore.total >= winScore;
+
+      if (reachedWin) {
+        // AI 액션 후 turn 이동 전 logPlayCard
+        logPlayCard(
+          room,
+          turnPlayerId,
+          cardId,
+          result.specials,
+          prevTurnPlayerId,
+          prevCounts.hands,
+          prevCounts.pis,
+        );
+        // AI: 단순 정책 — 손패 4장+ & 2고 이하면 go, 그 외 stop
+        const willGo = ai.hand.length >= 4 && ai.goCount < 2;
+        if (willGo) {
+          applyGo(io, room, store, turnPlayerId);
+        } else {
+          applyStop(io, room);
+          broadcastRoomState(io, room);
+        }
+      } else {
+        // 다음 턴
+        const idx = room.players.findIndex((p) => p.id === turnPlayerId);
+        const nextIdx = (idx + 1) % room.players.length;
+        room.game.turnPlayerId = room.players[nextIdx]!.id;
+        // dev 로그
+        logPlayCard(
+          room,
+          turnPlayerId,
+          cardId,
+          result.specials,
+          prevTurnPlayerId,
+          prevCounts.hands,
+          prevCounts.pis,
+        );
+        if (ended) endGameLog(room);
+        broadcastRoomState(io, room);
+        // 다음 턴도 AI면 재귀
+        progressAITurnIfAny(io, room, store);
+      }
     } catch (e) {
       console.warn(`[room:${room.id}] AI turn error:`, e);
     }

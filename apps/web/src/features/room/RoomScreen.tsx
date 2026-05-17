@@ -140,6 +140,75 @@ export function RoomScreen() {
   // 음성 전용 모드 — 호스트가 방 만들기 시 선택. server token이 video publish 권한 X로 발급.
   const voiceOnly = view.rules?.mediaMode === 'voice-only';
 
+  // phase=ended 진입 직후 [대기하기 / 통계보기] 선택 모달 (snapshot 저장 전)
+  if (ended.awaitingChoice && !ended.snapshot && view.phase === 'ended') {
+    const isHost = view.hostUserId === view.myUserId;
+    async function handleSkip() {
+      ended.skipResult();
+      // 호스트만 즉시 대기실 복귀 가능. 비호스트는 결과 화면 닫고 대기.
+      if (isHost) {
+        const r = await emitWithAck('room:return-to-lobby');
+        if (!r.ok) toast.error(r.error);
+      } else {
+        ended.dismissByUser();
+      }
+    }
+    return (
+      <LiveKitGameRoom
+        roomId={view.roomId}
+        userId={profile.userId}
+        nickname={profile.nickname}
+        enabled={videoEnabled}
+        voiceOnly={voiceOnly}
+      >
+        {/* 배경: 종료 시점 GameView (인터랙션 X) — ChoiceModal backdrop */}
+        <div className="pointer-events-none h-full opacity-60">
+          <GameView
+            view={view}
+            onPlayCard={handlePlayCard}
+            onLeave={handleLeave}
+            videoSidebar={showVideoUI ? <VideoSidebar view={view} /> : undefined}
+            videoMobileModalRender={
+              showVideoUI
+                ? ({ open, onClose }) => (
+                    <VideoMobileModal view={view} open={open} onClose={onClose} />
+                  )
+                : undefined
+            }
+            mediaSettings={showVideoUI ? <MediaSettings voiceOnly={voiceOnly} /> : undefined}
+          />
+        </div>
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border-2 border-amber-400/60 bg-gradient-to-b from-felt-800 to-felt-950 p-6 shadow-2xl">
+            <div className="mb-4 text-center">
+              <div className="text-xs font-semibold text-amber-300">게임 종료</div>
+              <div className="mt-1 text-3xl font-black text-amber-200">🏁 다음 단계 선택</div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={ended.showResult}
+                className="rounded-lg bg-amber-500 px-4 py-4 text-lg font-black text-slate-950 shadow-lg shadow-amber-900/50 hover:bg-amber-400"
+              >
+                📊 통계보기
+              </button>
+              <button
+                onClick={() => void handleSkip()}
+                className="rounded-lg bg-emerald-500 px-4 py-4 text-lg font-black text-slate-950 shadow-lg shadow-emerald-900/50 hover:bg-emerald-400"
+              >
+                🎮 {isHost ? '대기하기' : '닫기'}
+              </button>
+            </div>
+            <p className="mt-3 text-center text-[11px] text-felt-400">
+              {isHost
+                ? '대기하기: 통계 건너뛰고 바로 대기실로 — 다음 판 준비'
+                : '닫기: 호스트가 다음 판 시작하기를 대기'}
+            </p>
+          </div>
+        </div>
+      </LiveKitGameRoom>
+    );
+  }
+
   // ResultView snapshot — phase 'ended' 또는 호스트가 "🎮 게임으로" 누른 직후
   // 비호스트가 5초간 결과를 더 봐야 할 때 우선 표시.
   if (ended.snapshot) {
@@ -163,6 +232,23 @@ export function RoomScreen() {
         enabled={videoEnabled}
         voiceOnly={voiceOnly}
       >
+        {/* 배경: 종료 시점 GameView snapshot (인터랙션 X) — ResultView 모달 backdrop */}
+        <div className="pointer-events-none h-full opacity-60">
+          <GameView
+            view={snap}
+            onPlayCard={handlePlayCard}
+            onLeave={handleLeave}
+            videoSidebar={showVideoUI ? <VideoSidebar view={snap} /> : undefined}
+            videoMobileModalRender={
+              showVideoUI
+                ? ({ open, onClose }) => (
+                    <VideoMobileModal view={snap} open={open} onClose={onClose} />
+                  )
+                : undefined
+            }
+            mediaSettings={showVideoUI ? <MediaSettings voiceOnly={voiceOnly} /> : undefined}
+          />
+        </div>
         <ResultView
           view={snap}
           onStartNextRound={isHost ? handleReturnToLobby : undefined}

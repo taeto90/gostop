@@ -83,6 +83,16 @@ export interface RoomView {
   currentTurnLimitSec?: number;
   /** 테스트 모드 (손패 1장 + 바닥 1장 분배) — 추후 제거 */
   testMode?: boolean;
+  /** 테스트 모드 preset ID — 클라가 트리거 카드 강조용 */
+  testPreset?: import('../rules/presets.ts').PresetId;
+  /** 새 게임 시작 식별자 — 같은 시나리오 다시 / 시나리오 변경 시 +1 (turnSeq와 무관) */
+  gameInstanceId?: number;
+  /**
+   * 본인 turn 종료 시점에 winScore 도달 → go/stop 선택 대기 (rules-final.md §5).
+   * 해당 player에게만 모달 노출. 다른 player에게는 turn 진행이 멈춘 것처럼 보임.
+   * declare-go 시 turn 계속 진행, declare-stop 시 phase='ended' + 점수 정산.
+   */
+  pendingGoStop?: { playerId: string; score: number } | null;
 }
 
 /**

@@ -66,12 +66,12 @@ describe('DECK', () => {
     expect(cho.map((c) => c.month).sort((a, b) => a - b)).toEqual([4, 5, 7]);
   });
 
-  it('피는 24장이다 (일반 21 + 쌍피 3)', () => {
+  it('피는 24장이다 (일반 22 + 쌍피 2) — 9월 끗이 쌍피 역할 (정통 한국 룰, 옵션)', () => {
     const pi = DECK.filter((c) => c.kind === 'pi');
     expect(pi).toHaveLength(24);
     const ssangpi = pi.filter((c) => c.isSsangPi);
-    expect(ssangpi).toHaveLength(3);
-    expect(ssangpi.map((c) => c.month).sort((a, b) => a - b)).toEqual([9, 11, 12]);
+    expect(ssangpi).toHaveLength(2);
+    expect(ssangpi.map((c) => c.month).sort((a, b) => a - b)).toEqual([11, 12]);
   });
 });
 

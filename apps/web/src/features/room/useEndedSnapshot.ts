@@ -15,37 +15,47 @@ export interface EndedSnapshot {
   snapshot: RoomView | null;
   /** 비호스트가 명시적으로 닫기 누른 상태. true면 같은 ended phase에서 자동 재표시 X */
   dismissed: boolean;
+  /** phase=ended 진입 직후 [대기하기 / 통계보기] 선택 대기 중 */
+  awaitingChoice: boolean;
   /** 호스트가 다음 판 시작 등으로 즉시 dismiss할 때 사용 */
   setSnapshot: (next: RoomView | null) => void;
   /** 비호스트가 닫기 버튼 누를 때 — snapshot=null + dismissed=true */
   dismissByUser: () => void;
-  /** "결과 다시 보기" — dismissed flag 해제 → 다음 effect cycle에서 다시 띄움 */
+  /** "결과 다시 보기" — dismissed flag 해제 + snapshot 다시 띄움 */
   unDismiss: () => void;
+  /** [통계보기] 선택 — awaitingChoice 해제 + snapshot 저장 */
+  showResult: () => void;
+  /** [대기하기] 선택 — awaitingChoice만 해제 (return-to-lobby는 호출자가 처리) */
+  skipResult: () => void;
 }
 
 /**
  * 게임 종료 화면(ResultView) 표시 라이프사이클 관리.
  *
  * 흐름:
- * - phase 'ended' 진입 → snapshot 저장 (view freeze)
- * - 호스트 "🎮 게임으로" 클릭 → setSnapshot(null) 즉시 dismiss
+ * - phase 'ended' 진입 → awaitingChoice=true (ChoiceModal 표시)
+ * - 사용자 [통계보기] 클릭 → showResult() → snapshot 저장 → ResultView
+ * - 호스트 [대기하기] 클릭 → room:return-to-lobby + skipResult()
+ * - 호스트 "🎮 게임으로" (ResultView 안) → setSnapshot(null) 즉시 dismiss
  * - server가 phase='playing' broadcast → 비호스트 5초 카운트다운 후 자동 dismiss
- * - 비호스트 "🎮 게임으로" (닫기) 클릭 → dismissByUser (즉시 닫기 + dismissed flag)
- * - phase가 'ended' 외로 가면 dismissed flag 리셋 (다음 판 종료 시 정상 표시)
+ * - 비호스트 "🎮 게임으로" (닫기) 클릭 → dismissByUser
+ * - phase가 'ended' 외로 가면 flag 리셋 (다음 판 종료 시 정상 표시)
  */
 export function useEndedSnapshot(view: RoomView | null): EndedSnapshot {
   const [snapshot, setSnapshot] = useState<RoomView | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const [awaitingChoice, setAwaitingChoice] = useState(false);
 
-  // phase 'ended' 진입 시 snapshot 저장 (단 비호스트가 명시적 dismiss하지 않았을 때만)
+  // phase 'ended' 진입 시 ChoiceModal 표시 (snapshot은 사용자 선택 후 저장)
   useEffect(() => {
-    if (view?.phase === 'ended' && !dismissed) {
-      setSnapshot(view);
+    if (view?.phase === 'ended' && !dismissed && !snapshot) {
+      setAwaitingChoice(true);
     }
     if (view?.phase && view.phase !== 'ended') {
       setDismissed(false);
+      setAwaitingChoice(false);
     }
-  }, [view?.phase, view, dismissed]);
+  }, [view?.phase, dismissed, snapshot]);
 
   // 호스트가 다음 판 시작하면 비호스트 5초 후 자동 dismiss
   useEffect(() => {
@@ -60,11 +70,22 @@ export function useEndedSnapshot(view: RoomView | null): EndedSnapshot {
   return {
     snapshot,
     dismissed,
+    awaitingChoice,
     setSnapshot,
     dismissByUser: () => {
       setSnapshot(null);
       setDismissed(true);
     },
-    unDismiss: () => setDismissed(false),
+    unDismiss: () => {
+      setDismissed(false);
+      if (view?.phase === 'ended') setSnapshot(view);
+    },
+    showResult: () => {
+      setAwaitingChoice(false);
+      if (view?.phase === 'ended') setSnapshot(view);
+    },
+    skipResult: () => {
+      setAwaitingChoice(false);
+    },
   };
 }

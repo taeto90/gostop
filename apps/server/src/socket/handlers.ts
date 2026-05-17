@@ -1,7 +1,7 @@
 import type { Socket } from 'socket.io';
-import type { ClientToServerEvents, ServerToClientEvents } from '@gostop/shared';
+import type { ClientToServerEvents, Month, ServerToClientEvents } from '@gostop/shared';
 import { executeTurn } from '@gostop/shared';
-import { playCardForPlayer, scheduleAutoTurnTimer } from './turnFlow.ts';
+import { applyGo, applyStop, playCardForPlayer, scheduleAutoTurnTimer } from './turnFlow.ts';
 
 import type { RoomStore } from '../rooms/RoomStore.ts';
 import {
@@ -33,6 +33,7 @@ import {
   AssignGwangPaliSchema,
   ChatSendSchema,
   Toggle9YeolSchema,
+  SetTestPresetSchema,
   GameActionSchema,
   GameStartSchema,
   ReorderPlayersSchema,
@@ -131,6 +132,51 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
         timestamp: Date.now(),
       });
       cb({ ok: true });
+    });
+
+    // ============================== game:declare-shake ==============================
+    // 게임 도중 흔들기 선언 (rules-final.md §4-1).
+    // 본인 turn에 손패에 같은 월 3장 보유 + 그 월 카드 클릭 시 모달 [O] 선택 응답.
+    socket.on('game:declare-shake', (payload, cb) => {
+      const { userId, roomId } = socket.data;
+      if (!userId || !roomId) return cb({ ok: false, error: '방에 입장하지 않음' });
+      const room = roomStore.get(roomId);
+      if (!room) return cb({ ok: false, error: '방을 찾을 수 없음' });
+      if (room.phase !== 'playing') return cb({ ok: false, error: '게임 진행 중이 아님' });
+      if (!room.game) return cb({ ok: false, error: '게임이 시작되지 않음' });
+      if (room.game.turnPlayerId !== userId)
+        return cb({ ok: false, error: '본인 턴이 아님' });
+
+      const player = room.players.find((p) => p.id === userId);
+      if (!player) return cb({ ok: false, error: '플레이어가 아님' });
+
+      const month = payload?.month;
+      if (typeof month !== 'number' || month < 1 || month > 12) {
+        return cb({ ok: false, error: '잘못된 month' });
+      }
+      if ((player.flags.shookMonths ?? []).includes(month as Month)) {
+        return cb({ ok: false, error: '이미 흔들기 선언된 month' });
+      }
+
+      // 손패에 같은 month 3장 이상 보유 검사
+      const sameMonthCount = player.hand.filter((c) => c.month === month).length;
+      if (sameMonthCount < 3) {
+        return cb({ ok: false, error: `${month}월 3장 보유 안 됨` });
+      }
+
+      player.flags.shookMonths = [
+        ...(player.flags.shookMonths ?? []),
+        month as Month,
+      ];
+      // eslint-disable-next-line no-console
+      console.log('[server declare-shake]', {
+        userId,
+        month,
+        shookMonths: player.flags.shookMonths,
+      });
+
+      cb({ ok: true });
+      broadcastRoomState(io, room);
     });
 
     // ============================== game:toggle-9yeol ==============================
@@ -510,9 +556,12 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
       if (!parsed.success) {
         return cb({ ok: false, error: '잘못된 게임 시작 옵션' });
       }
-      const { botDifficulties, testMode } = parsed.data;
-      // testMode는 room에 영구 저장 — return-to-lobby 후 다시 시작해도 같은 모드
-      if (testMode !== undefined) room.testMode = testMode;
+      const { botDifficulties, testMode, testPreset } = parsed.data;
+      // production은 testMode 무시 — client 조작/오용 차단.
+      // dev에서만 testMode/testPreset 적용 + room에 영구 저장 (return-to-lobby 후 유지).
+      const isProd = process.env.NODE_ENV === 'production';
+      if (!isProd && testMode !== undefined) room.testMode = testMode;
+      if (!isProd) room.testPreset = testPreset;
 
       if (room.hostId !== userId) {
         return cb({ ok: false, error: '호스트만 게임을 시작할 수 있습니다' });
@@ -560,6 +609,75 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
       room.phase = 'ended';
       cb({ ok: true });
       broadcastRoomState(io, room);
+    });
+
+    // ============================== game:set-test-preset ==============================
+    // 테스트 모드 한정 — 호스트가 시나리오를 다른 preset으로 변경 + 즉시 재시작.
+    socket.on('game:set-test-preset', (payload, cb) => {
+      const { userId, roomId } = socket.data;
+      if (!userId || !roomId) return cb({ ok: false, error: '방에 입장하지 않음' });
+      const room = roomStore.get(roomId);
+      if (!room) return cb({ ok: false, error: '방을 찾을 수 없음' });
+      if (room.hostId !== userId) {
+        return cb({ ok: false, error: '호스트만 변경 가능' });
+      }
+      if (!room.testMode) {
+        return cb({ ok: false, error: '테스트 모드에서만 가능' });
+      }
+      const parsed = SetTestPresetSchema.safeParse(payload);
+      if (!parsed.success) return cb({ ok: false, error: '잘못된 preset' });
+
+      room.testPreset = parsed.data.preset;
+      // 강제 reset + 재시작
+      reconvertSpectatorsToPlayers(room);
+      if (room.turnTimerRef) {
+        clearTimeout(room.turnTimerRef);
+        room.turnTimerRef = undefined;
+      }
+      room.game = null;
+      room.stuckOwners = {};
+      room.chongtongUserId = null;
+      room.phase = 'waiting';
+      startGameInRoom(room);
+
+      cb({ ok: true });
+      scheduleAutoTurnTimer(io, room, roomStore);
+      broadcastRoomState(io, room);
+      progressAITurnIfAny(io, room, roomStore);
+    });
+
+    // ============================== game:test-restart ==============================
+    // 테스트 모드 한정 — 호스트가 즉시 같은 시나리오로 재시작 (phase 무관).
+    // playing 중이어도 강제 종료 + 재시작.
+    socket.on('game:test-restart', (cb) => {
+      const { userId, roomId } = socket.data;
+      if (!userId || !roomId) return cb({ ok: false, error: '방에 입장하지 않음' });
+      const room = roomStore.get(roomId);
+      if (!room) return cb({ ok: false, error: '방을 찾을 수 없음' });
+      if (room.hostId !== userId) {
+        return cb({ ok: false, error: '호스트만 재시작 가능' });
+      }
+      if (!room.testMode) {
+        return cb({ ok: false, error: '테스트 모드에서만 가능' });
+      }
+
+      // 게임 진행 중이면 강제 종료 + reset (phase=playing 또는 ended 모두 OK)
+      reconvertSpectatorsToPlayers(room);
+      if (room.turnTimerRef) {
+        clearTimeout(room.turnTimerRef);
+        room.turnTimerRef = undefined;
+      }
+      room.game = null;
+      room.stuckOwners = {};
+      room.chongtongUserId = null;
+      room.phase = 'waiting';
+
+      // 즉시 새 판 시작 (testMode + testPreset 그대로)
+      startGameInRoom(room);
+      cb({ ok: true });
+      scheduleAutoTurnTimer(io, room, roomStore);
+      broadcastRoomState(io, room);
+      progressAITurnIfAny(io, room, roomStore);
     });
 
     // ============================== room:return-to-lobby ==============================
@@ -802,6 +920,20 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
       if (!parsed.success) return cb({ ok: false, error: '잘못된 액션' });
       const action = parsed.data;
 
+      // declare-go / declare-stop: pendingGoStop 본인일 때만 허용
+      if (action.type === 'declare-go' || action.type === 'declare-stop') {
+        if (!room.pendingGoStop || room.pendingGoStop.playerId !== userId) {
+          return cb({ ok: false, error: 'go/stop 결정 대기 중이 아닙니다' });
+        }
+        if (action.type === 'declare-go') {
+          applyGo(io, room, roomStore, userId);
+        } else {
+          applyStop(io, room);
+          broadcastRoomState(io, room);
+        }
+        return cb({ ok: true });
+      }
+
       // Phase 2: play-card만 지원. 나머지는 Phase 4에서.
       if (action.type !== 'play-card') {
         return cb({ ok: false, error: `${action.type}는 Phase 4에서 지원 예정` });
@@ -809,6 +941,11 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
 
       if (room.game.turnPlayerId !== userId) {
         return cb({ ok: false, error: '본인 턴이 아닙니다' });
+      }
+
+      // pendingGoStop이 자기 자신이면 카드 못 냄 (go/stop 결정 먼저)
+      if (room.pendingGoStop && room.pendingGoStop.playerId === userId) {
+        return cb({ ok: false, error: 'go/stop 결정 먼저 하세요' });
       }
 
       const player = findPlayer(room, userId);
@@ -824,6 +961,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
             cardId: action.cardId,
             targetAfterHand: action.targetAfterHand,
             targetAfterDraw: action.targetAfterDraw,
+            declineBomb: action.declineBomb,
           },
           false,
         );

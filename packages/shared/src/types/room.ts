@@ -69,10 +69,19 @@ export interface Room {
    */
   aiBotDifficulties?: Record<string, AiDifficulty>;
   /**
-   * 테스트 모드 — 손패 1장 + 바닥 1장만 분배. 흐름 검증용 (추후 제거).
+   * 테스트 모드 — preset 명시 안 하면 손패 1장 + 바닥 1장. 흐름 검증용 (추후 제거).
    * game:start 시 호스트가 설정. game:next-round에서도 유지.
    */
   testMode?: boolean;
+  /** 테스트 모드 preset (testMode일 때만 적용) — `dealNewGame`이 카드 고정 분배 */
+  testPreset?: import('../rules/presets.ts').PresetId;
+  /** 매 startGameInRoom 호출마다 +1. 클라가 새 게임 인스턴스 변화 감지용 (turnSeq와 무관) */
+  gameInstanceId?: number;
+  /**
+   * 본인 turn 종료 시점에 winScore 도달 → go/stop 선택 대기 (rules-final.md §5).
+   * declare-go/declare-stop 전까지 turn 이동 안 함. AI 봇은 server에서 자동 결정.
+   */
+  pendingGoStop?: { playerId: string; score: number } | null;
 }
 
 /**

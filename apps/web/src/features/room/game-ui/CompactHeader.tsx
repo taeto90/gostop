@@ -2,6 +2,7 @@ import type { PlayerStateView, RoomView } from '@gostop/shared';
 import { calculateScore, canDeclareGoStop } from '@gostop/shared';
 import { AnimatedNumber } from '../../../components/AnimatedNumber.tsx';
 import { TurnIndicator } from '../../../components/TurnIndicator.tsx';
+import { computeMultiplier, multiplierBreakdown } from '../../../lib/multiplierUtils.ts';
 
 interface CompactHeaderProps {
   view: RoomView;
@@ -65,6 +66,23 @@ export function CompactHeader({
         <div className="flex flex-1 items-center gap-1.5">
           <span className="text-lg">{myPlayer.emojiAvatar}</span>
           <span className="font-semibold text-felt-50">{myPlayer.nickname}</span>
+          {myPlayer.flags?.shookMonths?.map((m) => (
+            <span
+              key={m}
+              title={`${m}월 흔들기 — 점수 ×2`}
+              className="rounded bg-amber-500/30 px-1 text-[10px] font-bold text-amber-100"
+            >
+              💪{m}월
+            </span>
+          ))}
+          {myPlayer.flags?.bombs && myPlayer.flags.bombs > 0 ? (
+            <span
+              title={`폭탄 ${myPlayer.flags.bombs}개 — 점수 ×2`}
+              className="rounded bg-rose-500/30 px-1 text-[10px] font-bold text-rose-100"
+            >
+              💣{myPlayer.flags.bombs}
+            </span>
+          ) : null}
           <TurnIndicator isCurrent={isMyTurn} goCount={myPlayer.goCount} />
           {myScore && (
             <>
@@ -74,6 +92,17 @@ export function CompactHeader({
                 <AnimatedNumber value={myScore.total} />
                 <span className="ml-0.5 text-[10px]">점</span>
               </span>
+              {(() => {
+                const m = computeMultiplier(myPlayer);
+                return m > 1 ? (
+                  <span
+                    title={multiplierBreakdown(myPlayer)}
+                    className="ml-1 rounded bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-bold text-amber-100"
+                  >
+                    ×{m}
+                  </span>
+                ) : null;
+              })()}
               <ScoreBadge label="광" value={myScore.gwang} color="amber" />
               <ScoreBadge label="끗" value={myScore.yeol + myScore.godori} color="sky" />
               <ScoreBadge label="띠" value={myScore.ddi + myScore.dan} color="rose" />

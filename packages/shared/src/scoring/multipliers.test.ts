@@ -157,7 +157,7 @@ describe('calculateFinalScore - 흔들기/폭탄', () => {
     expect(result.multiplier).toBe(2);
   });
 
-  it('폭탄 + 흔들기 동시', () => {
+  it('폭탄 + 흔들기 동시 — 폭탄 자체는 ×2 X (rules-final.md §4 2026-05-17 개정)', () => {
     const myCollected = [card('m01-gwang'), card('m03-gwang'), card('m08-gwang')];
     const opponent = [card('m02-pi-1')]; // 광 0
     const result = calculateFinalScore(myCollected, [opponent], {
@@ -165,8 +165,8 @@ describe('calculateFinalScore - 흔들기/폭탄', () => {
       shookCount: 1,
       bombCount: 1,
     });
-    // 광박 ×2 + 흔들기 ×2 + 폭탄 ×2 = ×8
-    expect(result.multiplier).toBe(8);
+    // 광박 ×2 + 흔들기 ×2 = ×4 (폭탄 ×2 제거됨 — bombCount는 정보 표시용)
+    expect(result.multiplier).toBe(4);
   });
 });
 

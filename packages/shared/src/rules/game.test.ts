@@ -65,6 +65,52 @@ describe('dealNewGame', () => {
     expect(a.hands['p1']!.map((c) => c.id)).toEqual(b.hands['p1']!.map((c) => c.id));
     expect(a.field.map((c) => c.id)).toEqual(b.field.map((c) => c.id));
   });
+
+  it('preset 모드 — 명시 카드 그대로 + 나머지는 셔플로 채움', () => {
+    const result = dealNewGame(['p1', 'p2'], makeRng(1), {
+      testMode: true,
+      preset: {
+        myHand: ['m01-gwang'],
+        field: ['m03-gwang', 'm03-pi-1'],
+        drawTop: ['m03-pi-2'],
+        myCollected: ['m08-gwang'],
+        botHand: ['m12-gwang'],
+      },
+    });
+    expect(result.hands['p1']?.[0]?.id).toBe('m01-gwang');
+    expect(result.hands['p1']).toHaveLength(10);
+    expect(result.hands['p2']?.[0]?.id).toBe('m12-gwang');
+    expect(result.field[0]?.id).toBe('m03-gwang');
+    expect(result.field[1]?.id).toBe('m03-pi-1');
+    expect(result.field).toHaveLength(8);
+    expect(result.deck[0]?.id).toBe('m03-pi-2');
+    expect(result.collected?.['p1']?.[0]?.id).toBe('m08-gwang');
+    // 모든 카드 ID 고유 (총 48 + collected 명시 1 = 49이지만 collected 카드는 deck에서 빠졌음)
+    const allDealtIds = [
+      ...result.hands['p1']!,
+      ...result.hands['p2']!,
+      ...result.field,
+      ...result.deck,
+      ...result.collected!['p1']!,
+      ...result.collected!['p2']!,
+    ].map((c) => c.id);
+    expect(new Set(allDealtIds).size).toBe(48);
+  });
+
+  it('바닥에 같은 월 4장이 모두 깔리는 경우 reshuffle (rules-final.md §0-4)', () => {
+    // 100회 분배 시도 — 하나라도 같은 월 4장 바닥이 나오면 안 됨 (재분배 보장)
+    for (let seed = 1; seed <= 100; seed++) {
+      const result = dealNewGame(['p1', 'p2'], makeRng(seed));
+      const monthCounts = new Map<number, number>();
+      for (const c of result.field) {
+        if (c.isJoker) continue;
+        monthCounts.set(c.month, (monthCounts.get(c.month) ?? 0) + 1);
+      }
+      for (const [month, count] of monthCounts) {
+        expect(count, `seed=${seed}, month=${month}`).toBeLessThan(4);
+      }
+    }
+  });
 });
 
 describe('executeTurn — 손패 매칭 없음 + 더미 매칭 없음', () => {

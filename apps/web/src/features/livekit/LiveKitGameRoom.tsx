@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
 import { LiveKitRoom, RoomAudioRenderer } from '@livekit/components-react';
 import '@livekit/components-styles';
+import { LogLevel, setLogLevel } from 'livekit-client';
 import {
   fetchLiveKitToken,
   loadCameraPref,
   loadMicrophonePref,
 } from '../../lib/livekit.ts';
+
+// LiveKit SDK 콘솔 로그 끄기 — disconnect/connecting/signal connected 등 게임 디버그
+// 가독성 떨어뜨리는 메시지들. 에러는 그대로 출력.
+setLogLevel(LogLevel.error);
 
 interface LiveKitGameRoomProps {
   roomId: string;

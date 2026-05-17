@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import {
+  applySpeed,
   FLY_DURATION_HAND_TO_FIELD,
   FLY_DURATION_TO_COLLECTED,
   FLY_TO_SLOT_DURATION,
@@ -27,13 +28,13 @@ export function useAnimationPhase(): AnimationPhase {
 export function getLayoutDuration(phase: AnimationPhase): number {
   switch (phase) {
     case 'phase1':
-      return FLY_DURATION_HAND_TO_FIELD;
+      return applySpeed(FLY_DURATION_HAND_TO_FIELD);
     case 'phase3':
-      return FLY_TO_SLOT_DURATION;
+      return applySpeed(FLY_TO_SLOT_DURATION);
     case 'phase4':
-      return FLY_DURATION_TO_COLLECTED;
+      return applySpeed(FLY_DURATION_TO_COLLECTED);
     case 'idle':
     default:
-      return 0.3;
+      return applySpeed(0.3);
   }
 }

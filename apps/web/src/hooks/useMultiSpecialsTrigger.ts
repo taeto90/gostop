@@ -17,8 +17,9 @@ export function useMultiSpecialsTrigger(
 ): void {
   const lastSeenSeqRef = useRef<number>(view.turnSeq ?? 0);
   useEffect(() => {
-    // sequence 진행 중이면 발화 보류 — phase가 'idle'이 되는 시점에 trigger
-    if (phase !== 'idle') return;
+    // phase4 = view swap 완료 시점이라 trigger 가능. idle은 sequence 끝 후.
+    // 둘 다 허용 — phase4 → phase3 같은 batch로 빠르게 전환되어 idle 단계가 짧을 때도 발화 보장.
+    if (phase !== 'phase4' && phase !== 'idle') return;
     const seq = view.turnSeq ?? 0;
     if (seq === lastSeenSeqRef.current) return;
     lastSeenSeqRef.current = seq;

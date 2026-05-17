@@ -52,8 +52,10 @@ export const DECK: readonly Card[] = [
   // 9월 — 국화 (Chrysanthemum)
   { id: 'm09-yeol', month: 9, kind: 'yeol', name: '국화 열끗' },
   { id: 'm09-ddi', month: 9, kind: 'ddi', ddiKind: 'cheong', name: '국화 청단' },
-  { id: 'm09-ssangpi', month: 9, kind: 'pi', isSsangPi: true, name: '국준 쌍피' },
-  { id: 'm09-pi', month: 9, kind: 'pi', name: '국화 피' },
+  // 9월 정통 한국 룰: 끗(m09-yeol)이 쌍피 역할 (옵션 nineYeolAsSsangPi).
+  // 별도 쌍피 카드 없음 → m09-ssangpi는 일반 피 한 장 (legacy ID 유지).
+  { id: 'm09-ssangpi', month: 9, kind: 'pi', name: '국화 피2' },
+  { id: 'm09-pi', month: 9, kind: 'pi', name: '국화 피1' },
 
   // 10월 — 단풍 (Maple & Deer)
   { id: 'm10-yeol', month: 10, kind: 'yeol', name: '단풍 (사슴)' },

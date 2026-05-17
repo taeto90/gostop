@@ -42,6 +42,8 @@ interface MyHandProps {
   compact?: boolean;
   /** Phase 1-A에서 그 자리에서 확대되는 카드 ID */
   peakingCardId?: string | null;
+  /** 테스트 모드 트리거 카드 ID들 — pulse rose ring으로 강조 */
+  triggerIds?: Set<string>;
 }
 
 /**
@@ -54,6 +56,7 @@ export function MyHand({
   onPlayCard,
   compact = false,
   peakingCardId = null,
+  triggerIds,
 }: MyHandProps) {
   const [containerRef, { width: cw, height: ch }] = useElementSize<HTMLDivElement>();
   // 손패는 월 오름차순(1→12) + 같은 월 내 광/끗/띠/피 순으로 표시.
@@ -74,9 +77,9 @@ export function MyHand({
 
   const total = hand.length;
 
-  // 카드 크기 — width와 height 둘 다 고려. matchable ring(6px+offset) 침범 방지 위해 ring buffer 빼줌.
+  // 카드 크기 — width와 height 둘 다 고려. matchable ring(5px+offset) + glow + translate-y 침범 방지.
   const padding = compact ? 4 : 12;
-  const ringBuffer = 14; // ring-[6px] + offset-2 + 여유
+  const ringBuffer = 24; // ring-[5px] + offset-2 + glow + -translate-y-1.5 여유
   const availableWidth = cw > 0 ? cw - padding : 700;
   const availableHeight = ch > 0 ? ch - ringBuffer : compact ? 90 : 150;
   const widthBased = (availableWidth - (total - 1) * HAND_CARD_GAP) / total;
@@ -95,8 +98,8 @@ export function MyHand({
         // 정통 4-3-3 분배 패턴 stagger (3인 4장→3장, 2인 5장→5장).
         <motion.div
           key={c.id}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
           transition={{
             delay: handDealDelay(i, hand.length),
             duration: 0.22,
@@ -107,7 +110,13 @@ export function MyHand({
             card={c}
             width={cardW}
             layoutId={c.id}
-            highlight={matchableIds.has(c.id) ? 'matchable' : 'none'}
+            highlight={
+              triggerIds?.has(c.id)
+                ? 'trigger'
+                : matchableIds.has(c.id)
+                  ? 'matchable'
+                  : 'none'
+            }
             peakScale={peakingCardId === c.id}
             onClick={isMyTurn && onPlayCard ? () => onPlayCard(c.id) : undefined}
           />

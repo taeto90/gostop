@@ -1,32 +1,42 @@
 import type { Card } from '../types/card.ts';
-import { createJokerCard, createShuffledDeck } from '../cards/deck.ts';
+import { createJokerCard, createShuffledDeck, DECK, getCardById } from '../cards/deck.ts';
 import { playCard } from './matching.ts';
+import type { PresetSetup } from './presets.ts';
 
 /**
  * 카드 분배 결과.
  */
 export interface DealResult {
-  /** playerId → 손패 7장 */
+  /** playerId → 손패 */
   hands: Record<string, Card[]>;
-  /** 바닥 6장 */
+  /** 바닥 카드 */
   field: Card[];
-  /** 남은 더미 (2인=28장, 3인=21장) */
+  /** 남은 더미 */
   deck: Card[];
+  /** 시작부터 player에게 부여된 collected (preset 모드만) */
+  collected?: Record<string, Card[]>;
 }
 
 export interface DealOptions {
   /** 조커 카드 추가 장수 (default 0). 셔플 후 분배 — 더미가 N장 늘어남. */
   jokerCount?: 0 | 1 | 2 | 3;
   /**
-   * 테스트 모드 — 손패 1장 + 바닥 1장만 분배 (나머지는 더미).
-   * 흐름 검증용 (게임 시작 → 종료 → 통계). 정식 룰 검증에는 부적합.
-   * 추후 제거 예정.
+   * 테스트 모드 — preset이 없으면 손패 1장 + 바닥 1장만 분배 (나머지는 더미).
+   * preset 명시 시 명시된 카드만 고정하고 나머지는 정상 분배.
    */
   testMode?: boolean;
+  /** 테스트 모드 preset 카드 셋업 (testMode=true일 때만 적용) */
+  preset?: PresetSetup;
 }
+
+/** 분배 시 같은 월 4장이 모두 바닥에 깔린 경우 reshuffle 최대 시도 횟수 */
+const MAX_RESHUFFLE_ATTEMPTS = 10;
 
 /**
  * 새 게임 시작 — 카드 셔플 후 손패/바닥/더미 분배.
+ *
+ * 정통 룰 (rules-final.md §0-4): 같은 월 4장이 모두 바닥에 깔리면 재분배.
+ * 이 경우 해당 월 카드를 어떤 player도 소유하지 못해 게임 진행이 무의미.
  */
 export function dealNewGame(
   playerIds: readonly string[],
@@ -37,6 +47,133 @@ export function dealNewGame(
     throw new Error(`고스톱은 2~3인만 가능 (현재 ${playerIds.length}명)`);
   }
 
+  // testMode + preset → preset 카드 고정 분배 (정상 인원수 손패/바닥 유지)
+  if (options.testMode && options.preset) {
+    return dealWithPreset(playerIds, options.preset, rng, options.jokerCount ?? 0);
+  }
+  // testMode만 — 손패 1장 + 바닥 1장 (기존 흐름 검증용)
+  if (options.testMode) {
+    return dealOnce(playerIds, rng, options);
+  }
+
+  for (let attempt = 0; attempt < MAX_RESHUFFLE_ATTEMPTS; attempt++) {
+    const result = dealOnce(playerIds, rng, options);
+    if (!hasFieldAllSameMonth(result.field)) {
+      return result;
+    }
+  }
+  // 10회 시도해도 reshuffle 조건이 계속 발생 = 사실상 불가능. 최후 결과 반환.
+  return dealOnce(playerIds, rng, options);
+}
+
+/** 바닥 카드 중 같은 월 4장이 모두 깔렸는지 검사 (조커 제외 — 매칭 X) */
+function hasFieldAllSameMonth(field: readonly Card[]): boolean {
+  const counts = new Map<number, number>();
+  for (const c of field) {
+    if (c.isJoker) continue;
+    counts.set(c.month, (counts.get(c.month) ?? 0) + 1);
+  }
+  for (const count of counts.values()) {
+    if (count >= 4) return true;
+  }
+  return false;
+}
+
+/**
+ * Preset 분배 — 명시된 카드 ID는 그 위치(손패/바닥/딴패/더미 top)에 고정,
+ * 나머지는 DECK에서 사용한 카드 빼고 셔플 후 채움.
+ *
+ * @internal — `dealNewGame({ testMode: true, preset })` 통해서만 호출됨
+ */
+export function dealWithPreset(
+  playerIds: readonly string[],
+  setup: PresetSetup,
+  rng?: () => number,
+  jokerCount = 0,
+): DealResult {
+  const HAND_SIZE = playerIds.length === 2 ? 10 : 7;
+  const FIELD_SIZE = playerIds.length === 2 ? 8 : 6;
+
+  const usedIds = new Set<string>();
+  const collect = (ids?: readonly string[]) => ids?.forEach((id) => usedIds.add(id));
+  collect(setup.myHand);
+  collect(setup.myCollected);
+  collect(setup.botHand);
+  collect(setup.botCollected);
+  collect(setup.field);
+  collect(setup.drawTop);
+
+  // 명시되지 않은 카드들로 채움 (조커는 별도 추가)
+  const restCards = DECK.filter((c) => !usedIds.has(c.id));
+  const r = rng ?? Math.random;
+  const shuffled = [...restCards];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(r() * (i + 1));
+    const tmp = shuffled[i]!;
+    shuffled[i] = shuffled[j]!;
+    shuffled[j] = tmp;
+  }
+
+  const resolveIds = (ids: readonly string[] | undefined): Card[] =>
+    (ids ?? []).map((id) => {
+      const c = getCardById(id);
+      if (!c) throw new Error(`Preset 카드 ID 없음: ${id}`);
+      return c;
+    });
+
+  const hands: Record<string, Card[]> = {};
+  const collected: Record<string, Card[]> = {};
+  let cursor = 0;
+
+  // 본인 (players[0]) 손패 + collected
+  const me = playerIds[0]!;
+  hands[me] = [...resolveIds(setup.myHand)];
+  collected[me] = [...resolveIds(setup.myCollected)];
+  while (hands[me]!.length < HAND_SIZE) hands[me]!.push(shuffled[cursor++]!);
+
+  // 봇 (players[1]) — 명시된 setup.botHand/botCollected 적용
+  if (playerIds.length >= 2) {
+    const bot = playerIds[1]!;
+    hands[bot] = [...resolveIds(setup.botHand)];
+    collected[bot] = [...resolveIds(setup.botCollected)];
+    while (hands[bot]!.length < HAND_SIZE) hands[bot]!.push(shuffled[cursor++]!);
+  }
+  // 3인 — 추가 player는 그냥 셔플로 채움
+  for (let i = 2; i < playerIds.length; i++) {
+    const pid = playerIds[i]!;
+    hands[pid] = [];
+    collected[pid] = [];
+    while (hands[pid]!.length < HAND_SIZE) hands[pid]!.push(shuffled[cursor++]!);
+  }
+
+  // 바닥
+  const field = [...resolveIds(setup.field)];
+  while (field.length < FIELD_SIZE) field.push(shuffled[cursor++]!);
+
+  // 더미: drawTop (FIFO) + 나머지 셔플 + 조커 (있으면 셔플 안에 섞음)
+  const drawTop = resolveIds(setup.drawTop);
+  let restDeck = shuffled.slice(cursor);
+  if (jokerCount > 0) {
+    const jokers = Array.from({ length: jokerCount }, () => createJokerCard());
+    restDeck = [...restDeck, ...jokers];
+    for (let i = restDeck.length - 1; i > 0; i--) {
+      const j = Math.floor(r() * (i + 1));
+      const tmp = restDeck[i]!;
+      restDeck[i] = restDeck[j]!;
+      restDeck[j] = tmp;
+    }
+  }
+  const deck = [...drawTop, ...restDeck];
+
+  return { hands, field, deck, collected };
+}
+
+/** 1회 분배 (reshuffle 검사 없이) */
+function dealOnce(
+  playerIds: readonly string[],
+  rng: (() => number) | undefined,
+  options: DealOptions,
+): DealResult {
   let shuffled = createShuffledDeck(rng);
   // 조커 카드 옵션 — DECK 48장 + 조커 N장을 합쳐 다시 셔플
   const jokerCount = options.jokerCount ?? 0;
@@ -106,6 +243,17 @@ export interface TurnOptions {
    * 룰 모달에서 호스트가 결정.
    */
   bombStealCount?: 1 | 2;
+  /**
+   * 해당 player가 흔들기 선언한 month 집합 (rules-final.md §4-2).
+   * 폭탄 자동 발동 조건 — 흔들기 미선언 month는 폭탄 X (정통 룰: 흔들기 O면만 폭탄 가능).
+   * server playCardForPlayer가 player.flags.shookMonths로부터 전달.
+   */
+  shookMonths?: ReadonlySet<number>;
+  /**
+   * 흔들기 O + 바닥 매칭 O 시 사용자가 [폭탄/1장 내기] 모달에서 1장 내기 선택한 경우.
+   * true면 isBomb 검사 우회 — 일반 매칭으로 처리 (1장만 내고 남은 2장은 손패 유지).
+   */
+  declineBomb?: boolean;
 }
 
 export interface TurnEvent {
@@ -136,6 +284,12 @@ export interface TurnSpecials {
   isOwnRecover?: boolean;
   /** 상대로부터 빼앗을 피 카드 수 (특수 룰 누적) */
   stealPi: number;
+  /**
+   * 빼앗은 피 카드 상세 — server stealPiFromOpponents가 set.
+   * client Phase 5에서 상대 collected → 본인 collected 비행 시각효과용.
+   * shared executeTurn 단계에서는 빈 배열, server playCardForPlayer/aiTurn이 채움.
+   */
+  stealPiCards?: { from: string; to: string; cardId: string }[];
 }
 
 export interface TurnResult {
@@ -294,11 +448,18 @@ export function executeTurn(
     };
   }
 
-  // 폭탄 자동 감지 — 손패 같은 월 3장 + 바닥 1장 → 4장 한 번에 가져감 (rules-final.md)
-  // 손패에서 클릭한 카드 + 같은 월 다른 손패 카드 2장 + 바닥 1장 = 4장
+  // 폭탄 자동 감지 — 손패 같은 월 3장 + 바닥 1장 → 4장 한 번에 가져감 (rules-final.md §4)
+  // 정통 룰: **흔들기 선언된 month만 폭탄 가능**. 미선언 시 일반 매칭 (1장만).
+  // declineBomb=true면 흔들기 했어도 사용자가 [1장 내기] 선택 → 일반 매칭.
   const sameMonthInHand = state.hand.filter((c) => c.month === handCard.month);
   const fieldSameMonth = state.field.filter((c) => c.month === handCard.month);
-  const isBomb = allowPpeok && sameMonthInHand.length >= 3 && fieldSameMonth.length === 1;
+  const monthShaken = options.shookMonths?.has(handCard.month) ?? false;
+  const isBomb =
+    allowPpeok &&
+    sameMonthInHand.length >= 3 &&
+    fieldSameMonth.length === 1 &&
+    monthShaken &&
+    !options.declineBomb;
 
   if (isBomb) {
     // 손패 그 월 모두 + 바닥 1장 = 4장 한 번에
@@ -582,8 +743,14 @@ export function simulateOrNeedsSelection(
   if (options.targetAfterHand === undefined) {
     const handMatches = state.field.filter((c) => c.month === handCard.month);
     if (handMatches.length === 2 && hasDifferentMatchKinds(handMatches)) {
+      // drawnCard도 함께 반환 — 클라가 Phase 1~3 prebuild 재생 후 모달 표시
+      const drawnCard = state.deck.length > 0 ? state.deck[0] : undefined;
       return {
-        needsSelection: { stage: 'hand', candidates: handMatches },
+        needsSelection: {
+          stage: 'hand',
+          candidates: handMatches,
+          drawnCard,
+        },
       };
     }
   }

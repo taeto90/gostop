@@ -74,10 +74,15 @@ export interface ClientToServerEvents {
    * 게임 시작 — 호스트만 호출. player 1~2명일 때 botDifficulties로 AI 봇 추가 (각 봇별 난이도).
    * botDifficulties.length = 추가할 봇 수. player + bot ≤ 5.
    * 생략 시 player가 1명이면 medium 1명 자동 추가 (기존 동작).
-   * testMode=true면 손패 1장 + 바닥 1장만 분배 (흐름 검증용, 추후 제거).
+   * testMode=true면 흐름 검증 분배 (preset 없으면 손패 1장 + 바닥 1장).
+   * testPreset 명시 시 해당 시나리오 카드 고정 분배.
    */
   'game:start': (
-    payload: { botDifficulties?: AiDifficulty[]; testMode?: boolean },
+    payload: {
+      botDifficulties?: AiDifficulty[];
+      testMode?: boolean;
+      testPreset?: import('./rules/presets.ts').PresetId;
+    },
     callback: (result: Result) => void,
   ) => void;
 
@@ -181,10 +186,38 @@ export interface ClientToServerEvents {
   ) => void;
 
   /**
+   * 게임 도중 흔들기 선언 (rules-final.md §4-1).
+   * 본인 turn에 손패에 같은 월 3장 보유 + 그 월 카드 클릭 시 모달 → 사용자 [O] 선택.
+   * server: player.flags.shookMonths에 month 추가. 점수 ×2 + 폭탄 자동 발동 조건 만족.
+   *
+   * 같은 month 두 번 선언 거부. 흔들기 미선언 month는 폭탄 자동 발동 X (1장만 매칭).
+   */
+  'game:declare-shake': (
+    payload: { month: number },
+    callback: (result: Result) => void,
+  ) => void;
+
+  /**
    * 쇼당 선언 — 본인 턴에 즉시 나가리 처리 (rules-final.md §7).
    * 친구간 협의 룰. 자동 검증 X — 사용자 합의로만 선언.
    */
   'game:declare-shodang': (callback: (result: Result) => void) => void;
+
+  /**
+   * 테스트 모드 한정 — 호스트가 즉시 같은 시나리오로 재시작.
+   * phase 무관 (playing 중에도 가능). room.testMode === true일 때만 허용.
+   * room.testPreset 그대로 유지하며 dealNewGame 재실행.
+   */
+  'game:test-restart': (callback: (result: Result) => void) => void;
+
+  /**
+   * 테스트 모드 한정 — 호스트가 시나리오를 다른 preset으로 변경 + 즉시 재시작.
+   * room.testPreset = preset 으로 갱신 후 game:test-restart와 동일 흐름.
+   */
+  'game:set-test-preset': (
+    payload: { preset: import('./rules/presets.ts').PresetId },
+    callback: (result: Result) => void,
+  ) => void;
 
   'ping:check': (callback: (response: { time: number }) => void) => void;
 }

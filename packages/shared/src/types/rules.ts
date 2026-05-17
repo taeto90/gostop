@@ -39,10 +39,10 @@ export interface RoomRules {
   mediaMode: 'video' | 'voice-only';
 }
 
-/** 기본 룰 — 표준 화투 룰 (rules-final.md). */
+/** 기본 룰 — 표준 화투 룰 (rules-final.md). 1:1 정통 룰 7점 기준 default. */
 export function defaultRoomRules(): RoomRules {
   return {
-    winScore: 3,
+    winScore: 7,
     shakeBonusType: 'multiplier',
     bombStealCount: 1,
     allowGukJoon: true,

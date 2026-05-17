@@ -1,12 +1,12 @@
 import type { Card as CardType } from '@gostop/shared';
 import { motion } from 'framer-motion';
 import { getLayoutDuration, useAnimationPhase } from '../lib/animationContext.ts';
-import { HAND_PEAK_DURATION, HAND_PEAK_SCALE } from '../lib/animationTiming.ts';
+import { applySpeed, HAND_PEAK_DURATION, HAND_PEAK_SCALE } from '../lib/animationTiming.ts';
 
 interface CardProps {
   card?: CardType;
   faceDown?: boolean;
-  highlight?: 'matchable' | 'selected' | 'matched' | 'none';
+  highlight?: 'matchable' | 'selected' | 'matched' | 'trigger' | 'none';
   onClick?: () => void;
   /** 사이즈 프리셋 */
   size?: 'xs' | 'sm' | 'md' | 'lg';
@@ -36,9 +36,11 @@ const SIZE_DIM: Record<SizePreset, { w: number; h: number }> = {
 /** highlight 타입별 ring/glow 클래스. 한 곳에서 톤 조절. */
 const HIGHLIGHT_CLASS: Record<Highlight, string> = {
   matchable:
-    'ring-[6px] ring-amber-300 ring-offset-2 ring-offset-felt-900 animate-matchable shadow-[0_0_18px_rgba(252,211,77,0.85)]',
+    'ring-[5px] ring-amber-400/70 ring-offset-2 ring-offset-felt-950 animate-matchable shadow-[0_0_16px_5px_rgba(252,211,77,0.5)] -translate-y-1.5 brightness-110 saturate-150',
   selected: 'ring-2 ring-sky-400',
   matched: 'ring-2 ring-emerald-400',
+  trigger:
+    'ring-[8px] ring-rose-400 ring-offset-2 ring-offset-felt-900 animate-pulse shadow-[0_0_28px_rgba(251,113,133,0.95)]',
   none: '',
 };
 
@@ -111,14 +113,7 @@ export function Card({
   }
 
   const imgUrl = `/assets/cards/${card.id}.svg`;
-  const ringClass =
-    highlight === 'matchable'
-      ? 'ring-[6px] ring-amber-300 ring-offset-2 ring-offset-felt-900 animate-matchable shadow-[0_0_18px_rgba(252,211,77,0.85)]'
-      : highlight === 'selected'
-        ? 'ring-2 ring-sky-400'
-        : highlight === 'matched'
-          ? 'ring-2 ring-emerald-400'
-          : '';
+  const ringClass = HIGHLIGHT_CLASS[highlight];
 
   const Component = onClick ? motion.button : motion.div;
   const phase = useAnimationPhase();
@@ -133,8 +128,10 @@ export function Card({
       animate={{ scale: peakScale ? HAND_PEAK_SCALE : 1 }}
       transition={{
         layout: { duration: layoutDuration, ease: 'easeInOut' },
-        scale: { duration: HAND_PEAK_DURATION, ease: 'easeOut' },
-        default: { type: 'spring', stiffness: 200, damping: 25 },
+        scale: { duration: applySpeed(HAND_PEAK_DURATION), ease: 'easeOut' },
+        // default를 layoutDuration으로 명시 — framer-motion 12에서 transition.layout이
+        // default spring에 override되는 케이스 방지. hover 같은 동작은 whileHover에서 처리.
+        default: { duration: layoutDuration, ease: 'easeInOut' },
       }}
       className={`${ringClass} ${
         onClick ? 'cursor-pointer' : ''
@@ -222,7 +219,7 @@ function SpecialCard({
       whileHover={onClick && !peakScale ? { y: -4 } : undefined}
       animate={{ scale: peakScale ? HAND_PEAK_SCALE : 1 }}
       transition={{
-        scale: { duration: HAND_PEAK_DURATION, ease: 'easeOut' },
+        scale: { duration: applySpeed(HAND_PEAK_DURATION), ease: 'easeOut' },
         default: { type: 'spring', stiffness: 200, damping: 25 },
       }}
       className={`${ringClass} ${onClick ? 'cursor-pointer' : ''} relative flex flex-shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border-2 shadow-md ${bgClass}`}

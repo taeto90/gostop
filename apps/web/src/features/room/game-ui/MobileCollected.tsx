@@ -44,11 +44,19 @@ export function MobileCollected({
   const score = calculateScore(collected, { nineYeolAsSsangPi, allowGukJoon });
   const canStop = canDeclareGoStop(score, playerCount, winScoreOverride);
 
+  // 9월 끗을 쌍피로 사용 시 m09-yeol을 yeol에서 pi 자리로 시각 이동 (점수 계산도 동일하게)
+  const m09yeol = collected.find((c) => c.id === 'm09-yeol');
   const groups: Record<Kind, CardType[]> = {
     gwang: collected.filter((c) => c.kind === 'gwang'),
-    yeol: collected.filter((c) => c.kind === 'yeol'),
+    yeol:
+      nineYeolAsSsangPi
+        ? collected.filter((c) => c.kind === 'yeol' && c.id !== 'm09-yeol')
+        : collected.filter((c) => c.kind === 'yeol'),
     ddi: collected.filter((c) => c.kind === 'ddi'),
-    pi: collected.filter((c) => c.kind === 'pi'),
+    pi:
+      nineYeolAsSsangPi && m09yeol
+        ? [...collected.filter((c) => c.kind === 'pi'), m09yeol]
+        : collected.filter((c) => c.kind === 'pi'),
   };
 
   const kindScore: Record<Kind, number> = {

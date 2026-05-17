@@ -60,6 +60,9 @@ export function buildRoomView(room: Room, viewerUserId: string): RoomView {
     gwangPaliVolunteers: room.gwangPaliVolunteers,
     gwangPaliAssignments: room.gwangPaliAssignments,
     chongtongUserId: room.chongtongUserId,
+    testMode: room.testMode,
+    testPreset: room.testPreset,
+    gameInstanceId: room.gameInstanceId,
     nagariMultiplier: room.nagariMultiplier,
     rules: room.rules,
     lastTurnSpecials: room.lastTurnSpecials ?? null,
@@ -67,6 +70,6 @@ export function buildRoomView(room: Room, viewerUserId: string): RoomView {
     turnSeq: room.turnSeq ?? 0,
     turnStartedAt: room.turnStartedAt,
     currentTurnLimitSec: room.currentTurnLimitSec,
-    testMode: room.testMode,
+    pendingGoStop: room.pendingGoStop ?? null,
   };
 }

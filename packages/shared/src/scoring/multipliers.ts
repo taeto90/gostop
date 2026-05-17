@@ -179,15 +179,15 @@ export function calculateFinalScore(
     multiplier *= Math.pow(2, flags.goCount - 2);
   }
 
-  // 흔들기/폭탄 — 'multiplier'면 각 ×2 누적, 'addPoint'면 점수 보너스로 변환 (변형 룰)
+  // 흔들기만 ×2 누적 (rules-final.md §4 — 2026-05-17 개정). 폭탄 자체는 배수 X.
+  // 흔들기 선언 안 했으면 폭탄도 발동 불가능 (game.ts isBomb 검사) → bombCount 항상 흔들기 동반.
+  // 'addPoint'면 흔들기당 +1점씩 (변형 룰).
   const shakeMode = flags.shakeBonusType ?? 'multiplier';
   let shakeAddPoints = 0;
   if (shakeMode === 'multiplier') {
     multiplier *= Math.pow(2, flags.shookCount);
-    multiplier *= Math.pow(2, flags.bombCount);
   } else {
-    // 'addPoint' — 흔들기/폭탄당 +1점씩 (multiplier 효과 X)
-    shakeAddPoints = flags.shookCount + flags.bombCount;
+    shakeAddPoints = flags.shookCount;
   }
 
   // 고박 (독박) — 고 부른 사람이 진 경우 ×2 패널티 (호출자가 결정)

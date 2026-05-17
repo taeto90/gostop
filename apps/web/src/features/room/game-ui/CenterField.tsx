@@ -6,11 +6,14 @@ import { Card } from '../../../components/Card.tsx';
 import { useElementSize } from '../../../hooks/useElementSize.ts';
 import { fieldDealDelay } from '../../../lib/dealingPattern.ts';
 import {
+  applySpeed,
   FLIP_DURATION,
   FLIP_PEAK_SCALE,
-  PHASE_3_TOTAL_DURATION,
+  FLY_TO_SLOT_DURATION,
   SCALE_PEAK_DURATION,
 } from '../../../lib/animationTiming.ts';
+import { getLayoutDuration, useAnimationPhase } from '../../../lib/animationContext.ts';
+import type { FlippingPhase } from '../../../hooks/useMultiTurnSequence.ts';
 import {
   FIELD_CARD_MAX_WIDTH,
   FIELD_CARD_MIN_WIDTH,
@@ -26,6 +29,8 @@ interface CenterFieldProps {
   deckCount: number;
   /** Phase 3: 더미에서 새로 등장하는 카드 ID — flip + 확대 + 축소 효과 적용 */
   flippingCardId?: string | null;
+  /** Phase 3 sub-phase — flip/peak/fly에 따라 floating overlay animate target 분기 */
+  flippingPhase?: FlippingPhase;
   /** 모바일 가로 모드 — 2행 4열 배치 (PC는 6각형 + 코너 4개) */
   isCompact?: boolean;
 }
@@ -82,9 +87,16 @@ export function CenterField({
   field,
   deckCount,
   flippingCardId,
+  flippingPhase = null,
   isCompact = false,
 }: CenterFieldProps) {
   const layout = useFieldLayout(field);
+  // exit 시점의 phase에 맞춰 fade-out duration 조정 — Phase 4에서 layoutId 비행
+  // (FLY_DURATION_TO_COLLECTED 2s)과 source motion.div unmount 시간을 맞춰야
+  // 매칭 카드가 collected로 비행하는 동안 source가 사라지지 않음.
+  const phaseForExit = useAnimationPhase();
+  const exitDuration = getLayoutDuration(phaseForExit);
+
   const [containerRef, { width: cw, height: ch }] = useElementSize<HTMLDivElement>();
   // 첫 mount 시 받은 카드들만 dealing stagger 적용 — 새 카드(더미 뒤집기)는 zero delay
   const [initialFieldIds] = useState(() => new Set(field.map((c) => c.id)));
@@ -204,18 +216,28 @@ export function CenterField({
 
           // 부모 motion.div는 transform-free (opacity만) — 자식 Card의 layoutId
           // 비행 보간(transform)을 방해하지 않도록 scale/y 등 transform prop은 제거.
-          // 첫 mount 카드는 fieldDealDelay 적용 (정통 4-3-3 분배 시각화).
+          // 첫 mount 카드(initialFieldIds)만 fade-in stagger 적용. 게임 진행 중 mount는
+          // 즉시 opacity 1 — Phase 1-B에서 hand → field 비행 카드가 보이지 않으면
+          // 사용자에겐 "순간이동"으로 보이는 버그 회피.
           const initialIdx = initialFieldIds.has(card.id)
             ? Array.from(initialFieldIds).indexOf(card.id)
             : -1;
-          const dealDelay =
-            initialIdx >= 0 ? fieldDealDelay(initialIdx, initialFieldTotal) : 0;
+          const isInitialDeal = initialIdx >= 0;
+          const dealDelay = isInitialDeal ? fieldDealDelay(initialIdx, initialFieldTotal) : 0;
           return (
             <motion.div
               key={card.id}
+              // 새로 mount되는 카드는 무조건 opacity 0 시작 — Phase 3 시작 시
+              // (setDisplayView/setFlippingCardId batch race로) drawnCard가 한 frame
+              //  opacity 1로 보이는 잔상 방지.
+              // animate에서 isFlipping 검사 — true면 그대로 0 유지 (floating overlay 담당),
+              // false면 0→1 fade-in.
+              // exit transition은 phase별 layoutDuration과 동기화 — Phase 4 collected
+              // 비행 시 source motion.div가 너무 빨리 unmount되어 카드가 갑자기
+              // 사라지는 문제 방지.
               initial={{ opacity: 0 }}
               animate={{ opacity: isFlipping ? 0 : 1 }}
-              exit={{ opacity: 0 }}
+              exit={{ opacity: 0, transition: { duration: exitDuration } }}
               transition={{ duration: 0.2, delay: dealDelay }}
               className="absolute"
               style={{
@@ -250,8 +272,28 @@ export function CenterField({
         const targetTop = Math.round(containerH / 2 + slotPos.y - cardH / 2);
         const deckLeft = Math.round(containerW / 2 - cardW / 2);
         const deckTop = Math.round(containerH / 2 - cardH / 2);
-        const t1 = FLIP_DURATION / PHASE_3_TOTAL_DURATION;
-        const t2 = (FLIP_DURATION + SCALE_PEAK_DURATION) / PHASE_3_TOTAL_DURATION;
+
+        // sub-phase별 animate target + duration. step 모드에서 sub-phase 단위 click과 동기화.
+        //   flip: deck 위치 유지, rotateY 180 → 0, scale 1
+        //   peak: deck 위치 유지, rotateY 0, scale 1 → FLIP_PEAK_SCALE
+        //   fly:  deck → slot, rotateY 0, scale FLIP_PEAK_SCALE → 1
+        const animateTarget =
+          flippingPhase === 'flip'
+            ? { left: deckLeft, top: deckTop, rotateY: 0, scale: 1 }
+            : flippingPhase === 'peak'
+              ? { left: deckLeft, top: deckTop, rotateY: 0, scale: FLIP_PEAK_SCALE }
+              : flippingPhase === 'fly'
+                ? { left: targetLeft, top: targetTop, rotateY: 0, scale: 1 }
+                : { left: deckLeft, top: deckTop, rotateY: 180, scale: 1 };
+
+        const transitionDuration =
+          flippingPhase === 'flip'
+            ? applySpeed(FLIP_DURATION)
+            : flippingPhase === 'peak'
+              ? applySpeed(SCALE_PEAK_DURATION)
+              : flippingPhase === 'fly'
+                ? applySpeed(FLY_TO_SLOT_DURATION)
+                : 0;
 
         return (
           <motion.div
@@ -263,15 +305,9 @@ export function CenterField({
               scale: 1,
               opacity: 1,
             }}
-            animate={{
-              left: [deckLeft, deckLeft, deckLeft, targetLeft],
-              top: [deckTop, deckTop, deckTop, targetTop],
-              rotateY: [180, 0, 0, 0],
-              scale: [1, 1, FLIP_PEAK_SCALE, 1],
-            }}
+            animate={animateTarget}
             transition={{
-              duration: PHASE_3_TOTAL_DURATION,
-              times: [0, t1, t2, 1],
+              duration: transitionDuration,
               ease: 'easeInOut',
             }}
             className="absolute"
@@ -282,7 +318,27 @@ export function CenterField({
               transformStyle: 'preserve-3d',
             }}
           >
-            <Card card={flippingItem.card} width={cardW} />
+            {/* 앞면 — rotateY 0일 때 정면. backface hidden이라 180일 때 안 보임. */}
+            <div
+              className="absolute inset-0"
+              style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+            >
+              <Card card={flippingItem.card} width={cardW} />
+            </div>
+            {/* 뒷면 (카드백) — 부모 rotateY 180일 때 정면 (자식 rotateY 180으로 상쇄). */}
+            <div
+              className="absolute inset-0"
+              style={{
+                backfaceVisibility: 'hidden',
+                WebkitBackfaceVisibility: 'hidden',
+                transform: 'rotateY(180deg)',
+              }}
+            >
+              <div
+                className="bg-card-back rounded-md ring-1 ring-amber-300/30 shadow-lg"
+                style={{ width: cardW, height: cardH }}
+              />
+            </div>
           </motion.div>
         );
       })()}

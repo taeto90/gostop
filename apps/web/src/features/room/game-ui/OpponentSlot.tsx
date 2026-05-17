@@ -7,6 +7,7 @@ import { Card } from '../../../components/Card.tsx';
 import { CollectedStrip } from '../../../components/CollectedStrip.tsx';
 import { TurnIndicator } from '../../../components/TurnIndicator.tsx';
 import { useElementSize } from '../../../hooks/useElementSize.ts';
+import { computeMultiplier, multiplierBreakdown } from '../../../lib/multiplierUtils.ts';
 
 /**
  * phase='waiting'에서 호스트가 다른 player slot 클릭 시 나오는 메뉴 액션.
@@ -109,64 +110,106 @@ export function OpponentSlot({
       aria-haspopup={hasMenuActions ? 'menu' : undefined}
       aria-expanded={hasMenuActions ? menuOpen : undefined}
     >
-      {/* 헤더: 아바타 + 닉네임 + 점수 + 차례 마커 */}
-      <header className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="text-xl sm:text-2xl">{player.emojiAvatar}</span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1">
-              <span className="truncate text-xs font-semibold text-felt-50 sm:text-sm">
-                {player.nickname}
+      {/* 헤더: 아바타 + 닉네임 + 배지/턴 마커 (점수는 collected 왼쪽으로 이동) */}
+      <header className="flex items-center gap-2">
+        <span className="text-xl sm:text-2xl">{player.emojiAvatar}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            <span className="truncate text-xs font-semibold text-felt-50 sm:text-sm">
+              {player.nickname}
+            </span>
+            {isAfk && (
+              <span title="응답 없음 — 자리 비움 가능성" className="text-xs">
+                💤
               </span>
-              {isAfk && (
-                <span title="응답 없음 — 자리 비움 가능성" className="text-xs">
-                  💤
-                </span>
-              )}
-              <TurnIndicator isCurrent={isCurrentTurn} goCount={player.goCount} />
-              {/* 상대 turn 카운트다운 — server timer 기반, 5초 이하면 빨간 pulse */}
-              {remainingSec !== null && (
-                <span
-                  className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                    remainingSec <= 5
-                      ? 'bg-rose-500/30 text-rose-200 animate-pulse'
-                      : 'bg-felt-950/70 text-felt-200'
-                  }`}
-                >
-                  ⏱ {remainingSec}
-                </span>
-              )}
-            </div>
-            {!player.connected && (
-              <span className="text-[10px] text-rose-300">재접속 중...</span>
+            )}
+            {player.flags?.shookMonths?.map((m) => (
+              <span
+                key={m}
+                title={`${m}월 흔들기 — 점수 ×2`}
+                className="rounded bg-amber-500/30 px-1 text-[10px] font-bold text-amber-100"
+              >
+                💪{m}월
+              </span>
+            ))}
+            {player.flags?.bombs && player.flags.bombs > 0 ? (
+              <span
+                title={`폭탄 ${player.flags.bombs}개`}
+                className="rounded bg-rose-500/30 px-1 text-[10px] font-bold text-rose-100"
+              >
+                💣{player.flags.bombs}
+              </span>
+            ) : null}
+            {player.goCount > 0 && (
+              <span
+                title={`${player.goCount}고 진행 중`}
+                className="rounded-full bg-rose-500/80 px-1.5 py-0.5 text-[10px] font-black text-white shadow-sm"
+              >
+                {player.goCount}고
+              </span>
+            )}
+            <TurnIndicator isCurrent={isCurrentTurn} goCount={0} />
+            {/* 상대 turn 카운트다운 — server timer 기반, 5초 이하면 빨간 pulse */}
+            {remainingSec !== null && (
+              <span
+                className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                  remainingSec <= 5
+                    ? 'bg-rose-500/30 text-rose-200 animate-pulse'
+                    : 'bg-felt-950/70 text-felt-200'
+                }`}
+              >
+                ⏱ {remainingSec}
+              </span>
             )}
           </div>
-        </div>
-        <div className="text-right">
-          <AnimatedNumber
-            value={score.total}
-            className="text-base font-bold text-amber-300 sm:text-lg"
-          />
-          <span className="ml-0.5 text-[9px] text-felt-300">점</span>
+          {!player.connected && (
+            <span className="text-[10px] text-rose-300">재접속 중...</span>
+          )}
         </div>
       </header>
 
-      {/* 손패 (압축 모드면 카운트만) */}
+      {/* 손패 (압축 모드면 카운트만)
+          Card에 layoutId 전달 — AI/상대 turn Phase 1-B에서 fake hand 카드가 source가 되어
+          바닥으로 layoutId 비행 가능 (phaseViews.buildPhase1ViewWithFakeHand로 mount). */}
       {compact ? (
         <div className="text-[11px] text-felt-300">손패 {player.handCount}장</div>
       ) : (
         <div className="flex items-center gap-0.5">
           {player.hand
-            ? player.hand.map((c) => <Card key={c.id} card={c} width={handCardWidth} />)
+            ? player.hand.map((c) => (
+                <Card key={c.id} card={c} width={handCardWidth} layoutId={c.id} />
+              ))
             : Array.from({ length: player.handCount }).map((_, i) => (
                 <Card key={i} faceDown width={handCardWidth} />
               ))}
         </div>
       )}
 
-      {/* 딴패 요약 — 비어 있어도 공간 미리 확보 (게임 진행 중 layout 안 흔들리도록). */}
-      <div className="min-h-[56px] flex-1 overflow-x-auto overflow-y-hidden border-t border-felt-900/60 pt-1">
-        <CollectedStrip collected={player.collected} size="xs" density="compact" />
+      {/* 점수(왼쪽) + 딴패(오른쪽) — 한 줄로 배치. 비어 있어도 공간 미리 확보. */}
+      <div className="flex min-h-[56px] flex-1 items-center gap-2 border-t border-felt-900/60 pt-1">
+        <div className="flex shrink-0 flex-col items-center justify-center rounded-lg border border-amber-400/30 bg-felt-950/60 px-2 py-1">
+          <div className="flex items-baseline gap-0.5">
+            <AnimatedNumber
+              value={score.total}
+              className="text-2xl font-black text-amber-300 drop-shadow-[0_0_6px_rgba(252,211,77,0.5)] sm:text-3xl"
+            />
+            <span className="text-[10px] font-bold text-felt-300">점</span>
+          </div>
+          {(() => {
+            const m = computeMultiplier(player);
+            return m > 1 ? (
+              <span
+                title={multiplierBreakdown(player)}
+                className="rounded bg-amber-500/40 px-1 text-[10px] font-black text-amber-100"
+              >
+                ×{m}
+              </span>
+            ) : null;
+          })()}
+        </div>
+        <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+          <CollectedStrip collected={player.collected} size="xs" density="compact" />
+        </div>
       </div>
 
       {/* 호스트 컨트롤 popover — phase='waiting'에서 클릭 시에만 노출 */}
