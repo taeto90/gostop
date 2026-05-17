@@ -766,7 +766,8 @@ export const PRESET_LABELS: Record<PresetId, string> = {
   // §1-2 끗 보너스
   godori: '고도리 (1·4·8월 새 3장 +5점)',
   // §1-5 9월 열끗 변환
-  'nine-yeol-toggle': '9월 열끗 ↔ 쌍피 변환',
+  'nine-yeol-toggle': '9월 열끗 ↔ 쌍피 변환 (본인)',
+  'nine-yeol-opponent': '9월 열끗 ↔ 쌍피 변환 (상대)',
   // 3개 모달 모두 — 손패+더미 매칭 모달 + 국준 모달
   'three-modals': '3모달 — 손패+더미 매칭 + 국준 (m09-yeol 선택)',
   // §2 박

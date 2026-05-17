@@ -59,13 +59,6 @@ export function MobileCollected({
         : collected.filter((c) => c.kind === 'pi'),
   };
 
-  const kindScore: Record<Kind, number> = {
-    gwang: score.gwang,
-    yeol: score.yeol + score.godori,
-    ddi: score.ddi + score.dan,
-    pi: score.pi,
-  };
-
   const cardW = isCompact ? COLLECTED_CARD_WIDTH.mobile : COLLECTED_CARD_WIDTH.pc;
 
   return (
@@ -78,7 +71,6 @@ export function MobileCollected({
             key={kind}
             kind={kind}
             cards={groups[kind]}
-            score={kindScore[kind]}
             cardW={cardW}
             isCompact={isCompact}
           />
@@ -112,27 +104,27 @@ export function MobileCollected({
 function KindGroup({
   kind,
   cards,
-  score,
   cardW,
   isCompact,
 }: {
   kind: Kind;
   cards: CardType[];
-  score: number;
   cardW: number;
   isCompact: boolean;
 }) {
+  // 우측 큰 숫자 = 카드 수 (점수는 하단 '총 점수'에 합산). OpponentSlot CollectedStrip과
+  // 일관 — 카드 5장/9장 임계값 전엔 점수 0이라 시각적 카운트가 카드 수가 자연스러움.
   const label = (
     <div
       className={`flex flex-shrink-0 items-baseline justify-between gap-1 rounded border ${
         isCompact ? 'px-1.5 py-0.5' : 'px-2 py-1'
       } ${COLORS[kind]}`}
     >
-      <span className={isCompact ? 'text-xs font-bold' : 'text-sm font-bold'}>
+      <span className={`font-bold ${isCompact ? 'text-xs' : 'text-sm'}`}>
         {LABELS[kind]}
       </span>
       <AnimatedNumber
-        value={score}
+        value={cards.length}
         className={isCompact ? 'text-sm font-extrabold' : 'text-base font-extrabold'}
       />
     </div>

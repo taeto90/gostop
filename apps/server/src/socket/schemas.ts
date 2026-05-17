@@ -106,6 +106,7 @@ const PresetIdSchema = z.enum([
   'chodan',
   'godori',
   'nine-yeol-toggle',
+  'nine-yeol-opponent',
   'case2-just-eat',
   'case4-pick-modal',
   'case4-double',

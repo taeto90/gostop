@@ -32,6 +32,7 @@ export type PresetId =
   | 'godori'
   // §1-5 9월 열끗 변환
   | 'nine-yeol-toggle'
+  | 'nine-yeol-opponent'
   // 3개 모달 모두 발화 — 손패+더미 매칭 모달 + 국준 모달
   | 'three-modals'
   // §2 박
@@ -158,6 +159,18 @@ export const PRESETS: Record<PresetId, PresetSetup> = {
     myHand: ['m09-yeol'],
     field: ['m09-ddi'],
     drawTop: ['m01-pi-1', 'm09-pi', 'm09-ssangpi'],
+  },
+
+  // 상대(players[1])가 9월 끗을 받아 토글하는 시나리오 — 본인 화면에서
+  // 상대 OpponentSlot의 collected가 올바르게 분류되는지 검증용.
+  // 호스트(본인)는 첫 턴 임의 카드 후 두 번째 player turn에 m09-yeol 매칭.
+  // drawTop[0]: host turn 더미, drawTop[1]: player2 turn 더미.
+  // 둘 다 9월 외 카드 — player2 turn 더미가 9월이면 뻑(Case 3) 발생해 collected X.
+  // 9월 ssangpi/pi는 뒤쪽에 두어 host/player2 손패·바닥에 들어가지 않게 보장.
+  'nine-yeol-opponent': {
+    botHand: ['m09-yeol'],
+    field: ['m09-ddi'],
+    drawTop: ['m12-pi-1', 'm12-pi-2', 'm09-pi', 'm09-ssangpi'],
   },
 
   // ===========================================================================
