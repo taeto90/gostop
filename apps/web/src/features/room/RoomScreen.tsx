@@ -292,6 +292,35 @@ export function RoomScreen() {
         </LiveKitGameRoom>
       );
     case 'ended':
+      // dismissed가 아니면 GameView 계속 mount — 4-phase staging 완료 후 onEndedReady에서
+      // ChoiceModal trigger. server phase='ended'가 곧장 와도 staging 안 끊김.
+      if (!ended.dismissed) {
+        return (
+          <LiveKitGameRoom
+            roomId={view.roomId}
+            userId={profile.userId}
+            nickname={profile.nickname}
+            enabled={videoEnabled}
+            voiceOnly={voiceOnly}
+          >
+            <GameView
+              view={view}
+              onPlayCard={handlePlayCard}
+              onLeave={handleLeave}
+              videoSidebar={showVideoUI ? <VideoSidebar view={view} /> : undefined}
+              videoMobileModalRender={
+                showVideoUI
+                  ? ({ open, onClose }) => (
+                      <VideoMobileModal view={view} open={open} onClose={onClose} />
+                    )
+                  : undefined
+              }
+              mediaSettings={showVideoUI ? <MediaSettings voiceOnly={voiceOnly} /> : undefined}
+              onEndedReady={ended.triggerChoice}
+            />
+          </LiveKitGameRoom>
+        );
+      }
       // 비호스트가 ResultView 닫기 누른 상태. 호스트가 "🎮 게임으로" 누를 때까지 대기 화면.
       return (
         <div className="flex h-full items-center justify-center bg-felt p-8">

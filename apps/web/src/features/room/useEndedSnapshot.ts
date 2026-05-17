@@ -27,6 +27,12 @@ export interface EndedSnapshot {
   showResult: () => void;
   /** [대기하기] 선택 — awaitingChoice만 해제 (return-to-lobby는 호출자가 처리) */
   skipResult: () => void;
+  /**
+   * GameView 4-phase 완료 후 호출 — phase==='ended' && animationPhase==='idle' 시점.
+   * ChoiceModal trigger 신호. 자동 useEffect 대신 GameView 명시적 호출로 변경 —
+   * Phase 4 종료 전 server ended broadcast로 ChoiceModal 즉시 뜨는 버그 차단.
+   */
+  triggerChoice: () => void;
 }
 
 /**
@@ -46,16 +52,15 @@ export function useEndedSnapshot(view: RoomView | null): EndedSnapshot {
   const [dismissed, setDismissed] = useState(false);
   const [awaitingChoice, setAwaitingChoice] = useState(false);
 
-  // phase 'ended' 진입 시 ChoiceModal 표시 (snapshot은 사용자 선택 후 저장)
+  // phase 'ended' 외로 가면 모든 flag reset (다음 판 정상 진입 보장).
+  // phase 'ended' 진입 시 자동 trigger X — GameView가 animationPhase='idle' 도달 시
+  // triggerChoice() 명시적 호출. Phase 4 진행 중에 ChoiceModal 끊는 버그 차단.
   useEffect(() => {
-    if (view?.phase === 'ended' && !dismissed && !snapshot) {
-      setAwaitingChoice(true);
-    }
     if (view?.phase && view.phase !== 'ended') {
       setDismissed(false);
       setAwaitingChoice(false);
     }
-  }, [view?.phase, dismissed, snapshot]);
+  }, [view?.phase]);
 
   // 호스트가 다음 판 시작하면 비호스트 5초 후 자동 dismiss
   useEffect(() => {
@@ -86,6 +91,12 @@ export function useEndedSnapshot(view: RoomView | null): EndedSnapshot {
     },
     skipResult: () => {
       setAwaitingChoice(false);
+    },
+    triggerChoice: () => {
+      // 이미 결정/표시 중이면 무시
+      if (snapshot || dismissed || awaitingChoice) return;
+      if (view?.phase !== 'ended') return;
+      setAwaitingChoice(true);
     },
   };
 }

@@ -269,7 +269,11 @@ export function ResultView({
 
               {/* 딴패 시각화 — 종류별 그룹 (광/끗/띠/피), 같은 종류 카드는 -space-x stack */}
               {r.collected.length > 0 && (
-                <CollectedGroups collected={r.collected} cardW={cardW} />
+                <CollectedGroups
+                  collected={r.collected}
+                  cardW={cardW}
+                  nineYeolAsSsangPi={r.nineYeolAsSsangPi}
+                />
               )}
             </motion.div>
           ))}

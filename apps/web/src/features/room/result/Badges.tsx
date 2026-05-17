@@ -56,15 +56,22 @@ const KIND_COLORS: Record<string, string> = {
 export function CollectedGroups({
   collected,
   cardW,
+  nineYeolAsSsangPi = false,
 }: {
   collected: readonly CardType[];
   cardW: number;
+  /** 그 player의 9월 끗 → 쌍피 옵션 (Player.flags.nineYeolAsSsangPi) */
+  nineYeolAsSsangPi?: boolean;
 }) {
+  const classify = (c: CardType): 'gwang' | 'yeol' | 'ddi' | 'pi' => {
+    if (nineYeolAsSsangPi && c.id === 'm09-yeol') return 'pi';
+    return c.kind;
+  };
   const groups = {
-    gwang: collected.filter((c) => c.kind === 'gwang'),
-    yeol: collected.filter((c) => c.kind === 'yeol'),
-    ddi: collected.filter((c) => c.kind === 'ddi'),
-    pi: collected.filter((c) => c.kind === 'pi'),
+    gwang: collected.filter((c) => classify(c) === 'gwang'),
+    yeol: collected.filter((c) => classify(c) === 'yeol'),
+    ddi: collected.filter((c) => classify(c) === 'ddi'),
+    pi: collected.filter((c) => classify(c) === 'pi'),
   };
   return (
     <div className="flex flex-col gap-2">

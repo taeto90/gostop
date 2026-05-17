@@ -38,6 +38,7 @@ export interface RankedPlayer {
   collected: readonly CardType[];
   score: ReturnType<typeof calculateScore>;
   final: ReturnType<typeof calculateFinalScore>;
+  nineYeolAsSsangPi: boolean;
 }
 
 /**
@@ -83,6 +84,7 @@ export function buildRankedPlayers(
         collected: p.collected,
         score: calculateScore(p.collected, { nineYeolAsSsangPi, allowGukJoon }),
         final,
+        nineYeolAsSsangPi,
       };
     })
     .sort((a, b) => b.final.finalTotal - a.final.finalTotal);

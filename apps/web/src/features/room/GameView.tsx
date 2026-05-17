@@ -62,6 +62,11 @@ interface GameViewProps {
   }) => React.ReactNode;
   /** 설정 모달의 카메라/마이크 토글 섹션 (LiveKit context 의존) */
   mediaSettings?: React.ReactNode;
+  /**
+   * server phase='ended' + 클라 4-phase staging 완료 시점 콜백.
+   * RoomScreen이 이 콜백으로 ChoiceModal trigger (Phase 4 진행 중 즉시 표시 차단).
+   */
+  onEndedReady?: () => void;
 }
 
 export function GameView({
@@ -74,6 +79,7 @@ export function GameView({
   videoSidebar,
   videoMobileModalRender,
   mediaSettings,
+  onEndedReady,
 }: GameViewProps) {
   // 멀티 모드: 본인 카드 클릭 시 잠시 확대 효과 (Phase 1 부분 적용).
   // 솔로(SoloPlay)는 props로 명시 전달, 멀티는 클라 단독으로 짧게 표시.
@@ -203,6 +209,14 @@ export function GameView({
   useShakeBombFireTrigger(displayView, false);
   // 총통 발동 시 EventOverlay 발화 (모든 player 동시)
   useChongtongFireTrigger(displayView);
+
+  // server phase='ended' + staging 완료 시점에 RoomScreen에 신호 (ChoiceModal trigger).
+  // displayView.phase는 staging 마지막 단계에서야 'ended'로 전환되므로 자동으로 4-phase 완료 후.
+  useEffect(() => {
+    if (displayView.phase === 'ended' && animationPhase === 'idle') {
+      onEndedReady?.();
+    }
+  }, [displayView.phase, animationPhase, onEndedReady]);
 
   function handlePlayCardWithPeek(cardId: string) {
     // rules-final.md §4 — 흔들기 게임 도중 발동.

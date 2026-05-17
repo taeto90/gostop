@@ -208,7 +208,12 @@ export function OpponentSlot({
           })()}
         </div>
         <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
-          <CollectedStrip collected={player.collected} size="xs" density="compact" />
+          <CollectedStrip
+            collected={player.collected}
+            size="xs"
+            density="compact"
+            nineYeolAsSsangPi={player.flags?.nineYeolAsSsangPi ?? false}
+          />
         </div>
       </div>
 

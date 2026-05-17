@@ -6,17 +6,32 @@ interface CollectedStripProps {
   size?: 'xs' | 'sm' | 'md';
   /** 펼친 정도 — compact는 카드 겹침 */
   density?: 'compact' | 'normal';
+  /**
+   * 본인이 9월 끗(m09-yeol)을 쌍피로 지정했는지 (Player.flags.nineYeolAsSsangPi).
+   * true면 m09-yeol을 '끗' 대신 '피' 그룹으로 분류 (시각 일관성).
+   */
+  nineYeolAsSsangPi?: boolean;
 }
 
 /**
  * 딴패를 광/끗/띠/피 별로 그룹지어 작게 가로로 표시.
  */
-export function CollectedStrip({ collected, size = 'sm', density = 'normal' }: CollectedStripProps) {
+export function CollectedStrip({
+  collected,
+  size = 'sm',
+  density = 'normal',
+  nineYeolAsSsangPi = false,
+}: CollectedStripProps) {
+  // 9월 끗을 쌍피로 변환 — 각 player의 flag 기반. relevant card id: m09-yeol
+  const classify = (c: CardType): 'gwang' | 'yeol' | 'ddi' | 'pi' => {
+    if (nineYeolAsSsangPi && c.id === 'm09-yeol') return 'pi';
+    return c.kind;
+  };
   const groups = {
-    gwang: collected.filter((c) => c.kind === 'gwang'),
-    yeol: collected.filter((c) => c.kind === 'yeol'),
-    ddi: collected.filter((c) => c.kind === 'ddi'),
-    pi: collected.filter((c) => c.kind === 'pi'),
+    gwang: collected.filter((c) => classify(c) === 'gwang'),
+    yeol: collected.filter((c) => classify(c) === 'yeol'),
+    ddi: collected.filter((c) => classify(c) === 'ddi'),
+    pi: collected.filter((c) => classify(c) === 'pi'),
   };
 
   if (collected.length === 0) {
