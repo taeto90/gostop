@@ -96,7 +96,7 @@ export function RoomScreen() {
     };
   }, [profile, id]);
 
-  if (!profile) return <Navigate to="/" replace />;
+  if (!profile) return null;
   if (!id) return <Navigate to="/" replace />;
 
   if (joinError) {

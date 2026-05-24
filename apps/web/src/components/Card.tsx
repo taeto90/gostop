@@ -111,6 +111,25 @@ export function Card({
       />
     );
   }
+  if (card.isBonusPi) {
+    const value = card.bonusPiValue ?? 2;
+    return (
+      <SpecialCard
+        layoutId={layoutId}
+        onClick={onClick}
+        peakScale={peakScale}
+        highlight={highlight}
+        dim={dim}
+        fontSize={fontSize}
+        emoji={value === 3 ? '🤟' : '✌️'}
+        bottomLabel={value === 3 ? '쓰리피' : '투피'}
+        ariaLabel={label ?? (value === 3 ? '쓰리피 보너스' : '투피 보너스')}
+        title={`보너스피 — 피 ${value}장 가치, 매칭 X, 점수판 직행`}
+        bgClass="border-emerald-900 bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-800"
+        cornerBadge={{ text: `피${value}`, bgClass: 'bg-amber-500/90' }}
+      />
+    );
+  }
 
   const imgUrl = `/assets/cards/${card.id}.svg`;
   const ringClass = HIGHLIGHT_CLASS[highlight];

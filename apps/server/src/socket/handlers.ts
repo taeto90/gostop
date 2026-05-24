@@ -43,6 +43,7 @@ import {
   TargetUserSchema,
   UpdateRulesSchema,
 } from './schemas.ts';
+import { logServerError } from './errorLog.ts';
 
 type IOSocket = Socket<
   ClientToServerEvents,
@@ -56,6 +57,19 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
     console.log(`[socket] connected: ${socket.id}`);
 
     socket.on('ping:check', (cb) => cb({ time: Date.now() }));
+
+    // 클라 측 에러 보고 — ErrorBoundary / toast.error에서 자동 emit
+    socket.on('client:error', (payload) => {
+      if (!payload || typeof payload !== 'object') return;
+      logServerError({
+        source: payload.source ?? 'client:unknown',
+        message: payload.message ?? '(no message)',
+        context: payload.context,
+        userId: payload.userId ?? socket.data.userId,
+        roomId: payload.roomId ?? socket.data.roomId,
+        fromClient: true,
+      });
+    });
 
     /**
      * 한 사용자(userId)는 한 번에 한 방에만 멤버일 수 있음.
@@ -239,7 +253,9 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
     socket.on('room:create', (payload, cb) => {
       const parsed = RoomCreateSchema.safeParse(payload);
       if (!parsed.success) return cb({ ok: false, error: '입력 검증 실패' });
-      const { userId, nickname, emojiAvatar, asSpectator, password, mediaMode } = parsed.data;
+      const { nickname, emojiAvatar, asSpectator, password, mediaMode } = parsed.data;
+      // JWT 미들웨어가 설정한 userId 사용 (클라이언트 위조 방지)
+      const userId = socket.data.userId ?? parsed.data.userId;
 
       // 한 사용자는 한 방에만 — 새 방 생성 전에 이전 방 정리 (게임 중인 방이면 거부)
       const evict = evictUserFromOtherRooms(userId);
@@ -259,7 +275,6 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
         return cb({ ok: false, error: op.error });
       }
 
-      socket.data.userId = userId;
       socket.data.roomId = room.id;
       socket.join(gameRoom(room.id));
       socket.join(userRoom(userId));
@@ -273,13 +288,13 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
       const parsed = RoomJoinSchema.safeParse(payload);
       if (!parsed.success) return cb({ ok: false, error: '입력 검증 실패' });
       const {
-        userId,
         roomId,
         nickname,
         emojiAvatar,
         asSpectator,
         password,
       } = parsed.data;
+      const userId = socket.data.userId ?? parsed.data.userId;
 
       const room = roomStore.get(roomId);
       if (!room) return cb({ ok: false, error: '존재하지 않는 방입니다' });
@@ -304,7 +319,6 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
 
       if (!op.ok) return cb({ ok: false, error: op.error });
 
-      socket.data.userId = userId;
       socket.data.roomId = roomId;
       socket.join(gameRoom(roomId));
       socket.join(userRoom(userId));
@@ -317,18 +331,18 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
     socket.on('room:rejoin', (payload, cb) => {
       const parsed = RoomRejoinSchema.safeParse(payload);
       if (!parsed.success) return cb({ ok: false, error: '입력 검증 실패' });
-      const { userId, roomId } = parsed.data;
+      const { roomId } = parsed.data;
+      const userId = socket.data.userId ?? parsed.data.userId;
 
       const room = roomStore.get(roomId);
       if (!room) return cb({ ok: false, error: '존재하지 않는 방입니다' });
       if (!isMember(room, userId)) return cb({ ok: false, error: '방의 멤버가 아닙니다' });
 
-      // 한 사용자 한 방 — 다른 방의 멤버면 정리 (게임 중이면 거부)
+      // 한 사용자 한 방 — 다른 방의 멸버면 정리 (게임 중이면 거부)
       const evict = evictUserFromOtherRooms(userId, roomId);
       if (!evict.ok) return cb({ ok: false, error: evict.error });
 
       setMemberConnected(room, userId, true);
-      socket.data.userId = userId;
       socket.data.roomId = roomId;
       socket.join(gameRoom(roomId));
       socket.join(userRoom(userId));
@@ -557,11 +571,8 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
         return cb({ ok: false, error: '잘못된 게임 시작 옵션' });
       }
       const { botDifficulties, testMode, testPreset } = parsed.data;
-      // production은 testMode 무시 — client 조작/오용 차단.
-      // dev에서만 testMode/testPreset 적용 + room에 영구 저장 (return-to-lobby 후 유지).
-      const isProd = process.env.NODE_ENV === 'production';
-      if (!isProd && testMode !== undefined) room.testMode = testMode;
-      if (!isProd) room.testPreset = testPreset;
+      if (testMode !== undefined) room.testMode = testMode;
+      room.testPreset = testPreset;
 
       if (room.hostId !== userId) {
         return cb({ ok: false, error: '호스트만 게임을 시작할 수 있습니다' });
@@ -636,6 +647,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
       }
       room.game = null;
       room.stuckOwners = {};
+      room.stuckBonusPis = {};
       room.chongtongUserId = null;
       room.phase = 'waiting';
       startGameInRoom(room);
@@ -669,6 +681,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
       }
       room.game = null;
       room.stuckOwners = {};
+      room.stuckBonusPis = {};
       room.chongtongUserId = null;
       room.phase = 'waiting';
 
@@ -702,6 +715,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
 
       room.game = null;
       room.stuckOwners = {};
+      room.stuckBonusPis = {};
       room.chongtongUserId = null;
       room.phase = 'waiting';
       // turn timer 잔여 정리
@@ -718,7 +732,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
     // 사용자가 멤버인 방 조회 (한 사용자 한 방 정책상 0~1개).
     // 로비 mount 시 호출 → 응답에 방 있으면 "이전 방으로 돌아가기" 배너 노출.
     socket.on('room:my-current', (payload, cb) => {
-      const queryUserId = payload?.userId;
+      const queryUserId = socket.data.userId ?? payload?.userId;
       if (!queryUserId) return cb({ ok: false, error: 'userId 누락' });
 
       for (const r of roomStore.list()) {
@@ -907,23 +921,32 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
     // ============================== game:action ==============================
     socket.on('game:action', (payload, cb) => {
       const { userId, roomId } = socket.data;
-      if (!userId || !roomId) return cb({ ok: false, error: '방에 입장하지 않음' });
+      const fail = (error: string, context?: Record<string, unknown>) => {
+        logServerError({
+          source: 'server:game:action',
+          message: error,
+          userId,
+          roomId,
+          context: { payload, ...context },
+        });
+        cb({ ok: false, error });
+      };
+
+      if (!userId || !roomId) return fail('방에 입장하지 않음');
 
       const room = roomStore.get(roomId);
-      if (!room) return cb({ ok: false, error: '방을 찾을 수 없음' });
-      if (!room.game) return cb({ ok: false, error: '게임이 시작되지 않았습니다' });
-      if (room.phase !== 'playing') {
-        return cb({ ok: false, error: '플레이 단계가 아닙니다' });
-      }
+      if (!room) return fail('방을 찾을 수 없음');
+      if (!room.game) return fail('게임이 시작되지 않았습니다');
+      if (room.phase !== 'playing') return fail('플레이 단계가 아닙니다');
 
       const parsed = GameActionSchema.safeParse(payload);
-      if (!parsed.success) return cb({ ok: false, error: '잘못된 액션' });
+      if (!parsed.success) return fail('잘못된 액션', { zod: parsed.error.issues });
       const action = parsed.data;
 
       // declare-go / declare-stop: pendingGoStop 본인일 때만 허용
       if (action.type === 'declare-go' || action.type === 'declare-stop') {
         if (!room.pendingGoStop || room.pendingGoStop.playerId !== userId) {
-          return cb({ ok: false, error: 'go/stop 결정 대기 중이 아닙니다' });
+          return fail('go/stop 결정 대기 중이 아닙니다');
         }
         if (action.type === 'declare-go') {
           applyGo(io, room, roomStore, userId);
@@ -936,20 +959,20 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
 
       // Phase 2: play-card만 지원. 나머지는 Phase 4에서.
       if (action.type !== 'play-card') {
-        return cb({ ok: false, error: `${action.type}는 Phase 4에서 지원 예정` });
+        return fail(`${action.type}는 Phase 4에서 지원 예정`);
       }
 
       if (room.game.turnPlayerId !== userId) {
-        return cb({ ok: false, error: '본인 턴이 아닙니다' });
+        return fail('본인 턴이 아닙니다', { turnPlayerId: room.game.turnPlayerId });
       }
 
       // pendingGoStop이 자기 자신이면 카드 못 냄 (go/stop 결정 먼저)
       if (room.pendingGoStop && room.pendingGoStop.playerId === userId) {
-        return cb({ ok: false, error: 'go/stop 결정 먼저 하세요' });
+        return fail('go/stop 결정 먼저 하세요');
       }
 
       const player = findPlayer(room, userId);
-      if (!player) return cb({ ok: false, error: '플레이어를 찾을 수 없음' });
+      if (!player) return fail('플레이어를 찾을 수 없음');
 
       try {
         const result = playCardForPlayer(
@@ -969,14 +992,19 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
           if ('needsSelection' in result) {
             return cb({ ok: false, needsSelection: result.needsSelection });
           }
-          return cb({ ok: false, error: result.error });
+          return fail(result.error);
         }
         cb({ ok: true });
       } catch (e) {
-        cb({
-          ok: false,
-          error: e instanceof Error ? e.message : '알 수 없는 에러',
+        const msg = e instanceof Error ? e.message : '알 수 없는 에러';
+        logServerError({
+          source: 'server:game:action:exception',
+          message: msg,
+          userId,
+          roomId,
+          context: { payload, stack: e instanceof Error ? e.stack : undefined },
         });
+        cb({ ok: false, error: msg });
       }
     });
 

@@ -25,4 +25,11 @@ export interface Card {
    * 더미 1장 뒤집기 (rule3·rule4 / rules-final.md §1-4).
    */
   readonly isJoker?: boolean;
+  /**
+   * 보너스피 (투피=2 / 쓰리피=3) — 옵션 룰. 일반 화투 외 추가 카드.
+   * 매칭 X. 손에서 내거나 더미에서 뒤집힐 때 자동으로 점수판으로 + 더미 1장 추가 뒤집기.
+   * 점수 계산은 `bonusPiValue` 만큼 피 카운트에 가산.
+   */
+  readonly isBonusPi?: boolean;
+  readonly bonusPiValue?: 2 | 3;
 }

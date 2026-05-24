@@ -180,6 +180,8 @@ export function startGameInRoom(room: Room): void {
       : undefined;
   const dealt = dealNewGame(playerIds, undefined, {
     jokerCount: room.rules.jokerCount,
+    bonusPiTwoCount: room.rules.bonusPiTwoCount,
+    bonusPiThreeCount: room.rules.bonusPiThreeCount,
     testMode: room.testMode,
     preset: presetSetup,
   });
@@ -212,6 +214,7 @@ export function startGameInRoom(room: Room): void {
   }
 
   room.stuckOwners = {};
+  room.stuckBonusPis = {};
   room.chongtongUserId = chongtongUserId;
   room.turnSeq = 0;
   room.gameInstanceId = (room.gameInstanceId ?? 0) + 1; // 매 startGameInRoom +1
@@ -264,6 +267,37 @@ export function reconvertSpectatorsToPlayers(room: Room): void {
  *
  * @returns 빼앗은 카드 상세 — client Phase 5 시각효과용 (상대 collected → 본인 collected 비행)
  */
+/**
+ * 보너스피(투피/쓰리피) — 모든 상대 각각으로부터 perEach 장씩 뺏기.
+ * 일반 stealPi와 구분: 일반은 "전체 count장을 한 명부터 차례로", 보너스피는 "각 상대로부터 균등".
+ */
+export function stealPiOneFromEachOpponent(
+  room: Room,
+  fromUserId: string,
+  perEach: number,
+): { from: string; to: string; cardId: string }[] {
+  if (perEach <= 0) return [];
+  const opponents = room.players.filter((p) => p.id !== fromUserId);
+  const from = room.players.find((p) => p.id === fromUserId);
+  if (!from) return [];
+
+  const stealLog: { from: string; to: string; cardId: string }[] = [];
+  for (const op of opponents) {
+    const piNormal = op.collected.filter((c) => c.kind === 'pi' && !c.isSsangPi);
+    const piSsang = op.collected.filter((c) => c.kind === 'pi' && c.isSsangPi);
+    const candidates = [...piNormal, ...piSsang];
+    const taken = candidates.slice(0, perEach);
+    if (taken.length === 0) continue;
+    const takenIds = new Set(taken.map((c: Card) => c.id));
+    op.collected = op.collected.filter((c: Card) => !takenIds.has(c.id));
+    from.collected = [...from.collected, ...taken];
+    for (const c of taken) {
+      stealLog.push({ from: op.id, to: fromUserId, cardId: c.id });
+    }
+  }
+  return stealLog;
+}
+
 export function stealPiFromOpponents(
   room: Room,
   fromUserId: string,

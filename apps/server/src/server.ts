@@ -8,6 +8,7 @@ import { config } from './config.ts';
 import { InMemoryRoomStore } from './rooms/InMemoryRoomStore.ts';
 import { registerSocketHandlers } from './socket/handlers.ts';
 import { generateLiveKitToken } from './livekit/token.ts';
+import { supabaseAdmin } from './lib/supabase.ts';
 
 // production에선 pino-pretty 비활성 (devDependency라 prod install 안 됨).
 // dev에서만 colorized + translated time 로그.
@@ -133,6 +134,25 @@ const io = new SocketServer<
 >(fastify.server, {
   cors: { origin: config.CORS_ORIGIN, credentials: true },
 });
+
+// JWT 검증 미들웨어 — Supabase Auth 토큰 필수
+if (supabaseAdmin) {
+  const sb = supabaseAdmin;
+  io.use(async (socket, next) => {
+    const token = (socket.handshake.auth as { token?: string })?.token;
+    if (!token) {
+      return next(new Error('인증 토큰이 필요합니다'));
+    }
+    const { data, error } = await sb.auth.getUser(token);
+    if (error || !data.user) {
+      return next(new Error('유효하지 않은 토큰입니다'));
+    }
+    socket.data.userId = data.user.id;
+    next();
+  });
+} else {
+  fastify.log.warn('[auth] Supabase 미설정 — JWT 검증 비활성 (dev 전용)');
+}
 
 registerSocketHandlers(io, roomStore);
 

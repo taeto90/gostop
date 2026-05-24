@@ -4,5 +4,6 @@ export {
   getCardById,
   createBombCard,
   createJokerCard,
+  createBonusPiCard,
   awardBombBonusCards,
 } from './deck.ts';

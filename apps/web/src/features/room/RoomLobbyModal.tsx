@@ -189,14 +189,13 @@ export function RoomLobbyModal({ view }: RoomLobbyModalProps) {
 
               <MediaModeBadge mode={view.rules?.mediaMode ?? 'video'} />
 
-              {/* 테스트 모드 컨트롤 — dev 빌드에서만 노출 (Vercel/Railway production은 hide) */}
-              {import.meta.env.DEV && isHost && (
+              {isHost && (
                 <TestModeToggle checked={testMode} onChange={setTestMode} />
               )}
-              {import.meta.env.DEV && isHost && testMode && (
+              {isHost && testMode && (
                 <TestPresetSelect value={testPreset} onChange={setTestPreset} />
               )}
-              {import.meta.env.DEV && isHost && testMode && (
+              {isHost && testMode && (
                 <AnimationSpeedSelect
                   value={animationSpeed}
                   onChange={setAnimationSpeed}
@@ -788,6 +787,10 @@ export const PRESET_LABELS: Record<PresetId, string> = {
   myungdda: '멍따 — 12월 광 + 봇 광 0',
   'last-turn-sweep': '마지막턴 싹쓸이 — 10월',
   'joker-flip': '조커 — RoomRules에서 jokerCount 설정',
+  // 보너스피 (사용자 룰)
+  'bonus-pi-hand': '✌️ 보너스피 — 손에서 투피 내기',
+  'bonus-pi-draw': '🤟 보너스피 — 더미에서 쓰리피 뒤집힘',
+  'bonus-pi-ppeok-stuck': '💥 보너스피 — 뻑 형성 중 끼임 (회수 보너스)',
 };
 
 function TestPresetSelect({

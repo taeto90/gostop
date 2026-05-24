@@ -26,6 +26,9 @@ importers:
       '@gostop/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@supabase/supabase-js':
+        specifier: ^2.105.4
+        version: 2.105.4
       fastify:
         specifier: ^5.2.0
         version: 5.8.5

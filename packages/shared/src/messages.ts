@@ -179,6 +179,18 @@ export interface ClientToServerEvents {
     callback: (result: Result) => void,
   ) => void;
 
+  /**
+   * 클라 측 에러 보고 — ErrorBoundary catch 또는 toast.error 시 자동 emit.
+   * 서버는 game_logs(type='error')에 즉시 insert (game_instance 무관).
+   */
+  'client:error': (payload: {
+    source: string;
+    message: string;
+    context?: Record<string, unknown>;
+    userId?: string;
+    roomId?: string;
+  }) => void;
+
   /** 본인의 9월 열끗 ↔ 쌍피 변환 토글 (rules-final.md §1-5) */
   'game:toggle-9yeol': (
     payload: { value: boolean },

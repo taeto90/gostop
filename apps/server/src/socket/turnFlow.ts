@@ -1,4 +1,4 @@
-import type { Card, Room } from '@gostop/shared';
+import type { Card, Player, Room, TurnSpecials } from '@gostop/shared';
 import {
   awardBombBonusCards,
   calculateScore,
@@ -8,7 +8,11 @@ import {
 import type { RoomStore } from '../rooms/RoomStore.ts';
 import { findPlayer } from '../rooms/playerOps.ts';
 import { type IO, broadcastRoomState } from './broadcast.ts';
-import { isAIBot, stealPiFromOpponents } from './gameLogic.ts';
+import {
+  isAIBot,
+  stealPiFromOpponents,
+  stealPiOneFromEachOpponent,
+} from './gameLogic.ts';
 import { progressAITurnIfAny } from './aiTurn.ts';
 import { appendGameLog, captureCounts, endGameLog, logPlayCard } from './gameLog.ts';
 
@@ -145,13 +149,14 @@ export function playCardForPlayer(
   room.game.field = result.newState.field;
   room.game.deck = result.newState.deck;
 
-  if (result.specials.ppeokMonth !== undefined) {
-    room.stuckOwners[result.specials.ppeokMonth] = playerId;
-    player.flags.ppeoksCaused += 1;
-  }
-  if (result.specials.recoveredMonth !== undefined) {
-    delete room.stuckOwners[result.specials.recoveredMonth];
-  }
+  // 뻑/보너스피 stuck 처리 — 사용자 룰 (뻑에 보너스피 끼면 stuck + 회수 보너스)
+  const { bonusPisStealable, extraStealFromRecover } = applyPpeokBonusPiRules(
+    room,
+    player,
+    playerId,
+    result.specials,
+  );
+
   if (result.specials.bomb) {
     player.flags.bombs += 1;
     player.hand = awardBombBonusCards(player.hand);
@@ -161,11 +166,8 @@ export function playCardForPlayer(
   room.lastTurnActorUserId = playerId;
   room.turnSeq = (room.turnSeq ?? 0) + 1;
 
-  if (result.specials.stealPi > 0) {
-    const stealLog = stealPiFromOpponents(room, playerId, result.specials.stealPi);
-    result.specials.stealPiCards = stealLog;
-    room.lastTurnSpecials = result.specials;
-  }
+  // 일반 stealPi (뻑 회수 보너스 포함) + 보너스피 1명당 1장씩
+  applyStealPi(room, result.specials, playerId, extraStealFromRecover, bonusPisStealable);
   room.game.history = [
     ...room.game.history,
     { type: 'play-card', cardId: opts.cardId },
@@ -416,4 +418,78 @@ function pickAutoCardId(hand: readonly Card[], field: readonly Card[]): string |
     return normal[Math.floor(Math.random() * normal.length)]!.id;
   }
   return hand[Math.floor(Math.random() * hand.length)]!.id;
+}
+
+/**
+ * 뻑/보너스피 상호작용 처리 — 사용자 룰.
+ *
+ * - 뻑(ppeokMonth) 발생 + 이번 턴 보너스피 끼임: 그 보너스피를 player.collected에서
+ *   제거하고 room.stuckBonusPis[ppeokMonth]에 stuck. 보너스피 stealPi 효과도 취소.
+ * - 뻑 회수(recoveredMonth) + 그 month에 stuck된 보너스피: 회수자가 함께 가져감 +
+ *   추가 stealPi = 보너스피 수 + 1.
+ * - stuckOwners 정상 갱신/제거도 같이 처리.
+ *
+ * @returns 보너스피 stealPi 적용 대상 수 + 뻑 회수 추가 stealPi
+ */
+function applyPpeokBonusPiRules(
+  room: Room,
+  player: Player,
+  playerId: string,
+  specials: TurnSpecials,
+): { bonusPisStealable: number; extraStealFromRecover: number } {
+  const ppeokMonth = specials.ppeokMonth;
+  const turnBonusPis = specials.bonusPiCards ?? [];
+  let bonusPisStealable = specials.bonusPiCollected;
+
+  if (ppeokMonth !== undefined && turnBonusPis.length > 0) {
+    const stuckIds = new Set(turnBonusPis.map((c) => c.id));
+    player.collected = player.collected.filter((c) => !stuckIds.has(c.id));
+    room.stuckBonusPis[ppeokMonth] = [
+      ...(room.stuckBonusPis[ppeokMonth] ?? []),
+      ...turnBonusPis,
+    ];
+    bonusPisStealable = 0; // 점수판 X → stealPi 효과도 취소
+  }
+
+  if (ppeokMonth !== undefined) {
+    room.stuckOwners[ppeokMonth] = playerId;
+    player.flags.ppeoksCaused += 1;
+  }
+
+  const recoveredMonth = specials.recoveredMonth;
+  let extraStealFromRecover = 0;
+  if (recoveredMonth !== undefined) {
+    const recoveredBonus = room.stuckBonusPis[recoveredMonth] ?? [];
+    if (recoveredBonus.length > 0) {
+      player.collected = [...player.collected, ...recoveredBonus];
+      extraStealFromRecover = recoveredBonus.length + 1;
+      delete room.stuckBonusPis[recoveredMonth];
+    }
+    delete room.stuckOwners[recoveredMonth];
+  }
+
+  return { bonusPisStealable, extraStealFromRecover };
+}
+
+/**
+ * stealPi 적용 — 일반 stealPi (한 명부터 차례로) + 보너스피 (각 상대로부터 1장씩).
+ * 결과를 specials.stealPiCards에 누적.
+ */
+function applyStealPi(
+  room: Room,
+  specials: TurnSpecials,
+  playerId: string,
+  extraStealFromRecover: number,
+  bonusPisStealable: number,
+): void {
+  const totalStealPi = specials.stealPi + extraStealFromRecover;
+  if (totalStealPi > 0) {
+    specials.stealPiCards = stealPiFromOpponents(room, playerId, totalStealPi);
+    room.lastTurnSpecials = specials;
+  }
+  if (bonusPisStealable > 0) {
+    const bonusLog = stealPiOneFromEachOpponent(room, playerId, bonusPisStealable);
+    specials.stealPiCards = [...(specials.stealPiCards ?? []), ...bonusLog];
+    room.lastTurnSpecials = specials;
+  }
 }

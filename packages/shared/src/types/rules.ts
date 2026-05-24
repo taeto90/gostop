@@ -32,6 +32,14 @@ export interface RoomRules {
    */
   jokerCount: 0 | 1 | 2 | 3;
   /**
+   * 보너스피 — 정통 한국 고스톱 옵션. 셔플에 포함되어 분배.
+   * 손에서 내거나 더미에서 뒤집힐 때 자동 점수판 + 더미 1장 추가 뒤집기.
+   * - bonusPiTwoCount: 투피(피 2장 가치) 수 (default 0)
+   * - bonusPiThreeCount: 쓰리피(피 3장 가치) 수 (default 0)
+   */
+  bonusPiTwoCount: 0 | 1 | 2;
+  bonusPiThreeCount: 0 | 1;
+  /**
    * 화상 채팅 모드 — 'video' (기본, 카메라+마이크) / 'voice-only' (마이크만).
    * 'voice-only'면 LiveKit 토큰 발급 시 video publish 권한 X (서버 측 강제).
    * 클라는 카메라 트랙 publish 시도 자체를 안 함.
@@ -49,6 +57,8 @@ export function defaultRoomRules(): RoomRules {
     allowMyungttadak: true,
     turnTimeLimitSec: 0,
     jokerCount: 0,
+    bonusPiTwoCount: 0,
+    bonusPiThreeCount: 0,
     mediaMode: 'video',
   };
 }

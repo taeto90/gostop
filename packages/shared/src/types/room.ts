@@ -43,6 +43,12 @@ export interface Room {
   gwangPaliAssignments: string[];
   /** 뻑 stuck month → owner userId (자뻑 vs 일반 회수 구분, rules-final.md) */
   stuckOwners: Record<number, string>;
+  /**
+   * 뻑 형성 중 끼인 보너스피 카드들 (사용자 룰).
+   * 뻑 회수 시 회수자가 함께 가져감 + stealPi += stuckBonusPis.length + 1.
+   * key=month: 같은 뻑에 끼인 보너스피들. 회수 시 해당 month의 보너스피만 회수.
+   */
+  stuckBonusPis: Record<number, Card[]>;
   /** 직전 판이 나가리였으면 다음 판 점수 multiplier (default 1) */
   nagariMultiplier: number;
   /** 시작 시 손패 같은 월 4장 → 즉시 승리. 발동자 userId */

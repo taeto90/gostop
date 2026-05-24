@@ -70,7 +70,7 @@ export const UpdateRulesSchema = z.object({
 });
 
 export const ChatSendSchema = z.object({
-  text: z.string().trim().min(1).max(200),
+  text: z.string().trim().min(1).max(500),
 });
 
 export const Toggle9YeolSchema = z.object({
@@ -97,6 +97,9 @@ const PresetIdSchema = z.enum([
   'myung-pak',
   'last-turn-sweep',
   'joker-flip',
+  'bonus-pi-hand',
+  'bonus-pi-draw',
+  'bonus-pi-ppeok-stuck',
   'gwang-3',
   'gwang-3-bisam',
   'gwang-4',

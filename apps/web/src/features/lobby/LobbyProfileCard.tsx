@@ -1,5 +1,6 @@
 import { useGameHistoryStore } from '../../stores/gameHistoryStore.ts';
-import { useSessionStore } from '../../stores/sessionStore.ts';
+import { useAuthStore } from '../../stores/authStore.ts';
+import { disconnectSocket } from '../../lib/socket.ts';
 
 interface ProfileCardProps {
   nickname: string;
@@ -38,10 +39,13 @@ export function LobbyProfileCard({
           </span>
         </div>
         <button
-          onClick={() => useSessionStore.getState().clearProfile()}
-          className="self-start text-[10px] text-green-300/60 hover:text-green-200 sm:text-xs"
+          onClick={() => {
+            disconnectSocket();
+            void useAuthStore.getState().signOut();
+          }}
+          className="self-start text-[10px] text-red-400/70 hover:text-red-300 sm:text-xs"
         >
-          변경
+          로그아웃
         </button>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:gap-3">

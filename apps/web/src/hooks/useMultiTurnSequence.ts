@@ -39,6 +39,11 @@ interface MultiTurnSequence {
   flippingCardId: string | null;
   /** Phase 3 sub-phase — CenterField floating overlay animate target 결정 */
   flippingPhase: FlippingPhase;
+  /**
+   * 이번 턴 손패에서 낸 카드 ID — Phase 1-A부터 Phase 4까지 유지.
+   * CenterField가 Phase 3 fly destination을 이 카드 위치로 stack해 시각 효과.
+   */
+  currentHandCardId: string | null;
   /** 현재 진행 중인 phase — Card layout transition duration이 phase별로 다름 */
   currentPhase: AnimationPhase;
   /** step 모드일 때 사용자 click 대기 중인 라벨. null이면 자동 진행 또는 비활성. */
@@ -77,6 +82,7 @@ export function useMultiTurnSequence(
   const [peakingHandCardId, setPeakingHandCardId] = useState<string | null>(null);
   const [flippingCardId, setFlippingCardId] = useState<string | null>(null);
   const [flippingPhase, setFlippingPhase] = useState<FlippingPhase>(null);
+  const [currentHandCardId, setCurrentHandCardId] = useState<string | null>(null);
   const [currentPhase, setCurrentPhase] = useState<AnimationPhase>('idle');
   const [awaitingStep, setAwaitingStep] = useState<string | null>(null);
 
@@ -279,6 +285,7 @@ export function useMultiTurnSequence(
 
     plog(tag, `■ seq END → idle`);
     setCurrentPhase('idle');
+    setCurrentHandCardId(null);
     // 다음 sequence가 같은 batch에 진입하면 phase=idle render frame을 건너뛰어
     // useMultiSpecialsTrigger가 trigger 발화 못 함. sleep(0)으로 batch 분리 →
     // idle render 보장 → effects 실행 → trigger.
@@ -305,6 +312,8 @@ export function useMultiTurnSequence(
     // Phase 1-A peak는 사용자가 클릭한 카드(handCards[0])만 — 폭탄이라도 1장만 확대
     // Phase 1-B에서는 handCards 모두 (3장이면 3장 다) 손→바닥 비행
     const peakCardId = handCards[0]?.id ?? '';
+    // currentHandCardId — Phase 3에서 더미 카드를 손패 카드 위에 stack할 때 사용
+    setCurrentHandCardId(peakCardId);
 
     // ---- Phase 1-A ----
     plog(tag, `▶ Phase 1-A 시작 (peak ${HAND_PEAK_DURATION}s) — ${peakCardId}${handCards.length > 1 ? ` (+${handCards.length - 1} 폭탄)` : ''}`);
@@ -440,6 +449,7 @@ export function useMultiTurnSequence(
     peakingHandCardId,
     flippingCardId,
     flippingPhase,
+    currentHandCardId,
     currentPhase,
     awaitingStep,
     continueStep,

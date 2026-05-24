@@ -14,7 +14,6 @@ import { LobbyResumeCard } from './LobbyResumeCard.tsx';
 import { LobbyRoomList } from './LobbyRoomList.tsx';
 import { CreateRoomModal } from './CreateRoomModal.tsx';
 import { PasswordPromptModal } from './PasswordPromptModal.tsx';
-import { ProfileForm } from './ProfileForm.tsx';
 
 export function Lobby() {
   const profile = useSessionStore((s) => s.profile);
@@ -24,9 +23,10 @@ export function Lobby() {
   const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // 비밀방 입장 시 비밀번호 입력 모달 — 어떤 방인지 + 에러 메시지
+  // 비밀방 입장 시 비밀번호 입력 모달 — 어떤 방인지 + 관전 여부 + 에러 메시지
   const [passwordPrompt, setPasswordPrompt] = useState<{
     room: RoomListItem;
+    asSpectator: boolean;
     err?: string;
   } | null>(null);
 
@@ -44,18 +44,8 @@ export function Lobby() {
     };
   }, [profile]);
 
-  if (!profile) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-green-950 via-green-900 to-emerald-950 p-6 text-white">
-        <div className="mx-auto mt-8 max-w-2xl">
-          <h1 className="mb-8 text-center text-4xl font-bold text-amber-400">
-            🎴 화투 게임
-          </h1>
-          <ProfileForm />
-        </div>
-      </div>
-    );
-  }
+  // profile이 없으면 App.tsx AuthGuard가 처리 — 여기 도달 시 항상 있음
+  if (!profile) return null;
 
   async function createRoom(opts: {
     password?: string;
@@ -83,7 +73,11 @@ export function Lobby() {
     }
   }
 
-  async function joinRoomById(roomId: string, password?: string) {
+  async function joinRoomById(
+    roomId: string,
+    password?: string,
+    asSpectator = false,
+  ) {
     if (!profile) return;
     setBusy(true);
     const result = await emitWithAck('room:join', {
@@ -91,7 +85,7 @@ export function Lobby() {
       nickname: profile.nickname,
       emojiAvatar: profile.emojiAvatar,
       roomId: roomId.toUpperCase(),
-      asSpectator: false,
+      asSpectator,
       password,
     });
     setBusy(false);
@@ -110,11 +104,11 @@ export function Lobby() {
     }
   }
 
-  function handleJoinRoom(room: RoomListItem) {
+  function handleJoinRoom(room: RoomListItem, asSpectator = false) {
     if (room.hasPassword) {
-      setPasswordPrompt({ room });
+      setPasswordPrompt({ room, asSpectator });
     } else {
-      void joinRoomById(room.id);
+      void joinRoomById(room.id, undefined, asSpectator);
     }
   }
 
@@ -200,7 +194,8 @@ export function Lobby() {
         err={passwordPrompt?.err ?? null}
         onClose={() => setPasswordPrompt(null)}
         onSubmit={(pw) => {
-          if (passwordPrompt) void joinRoomById(passwordPrompt.room.id, pw);
+          if (passwordPrompt)
+            void joinRoomById(passwordPrompt.room.id, pw, passwordPrompt.asSpectator);
         }}
       />
     </div>

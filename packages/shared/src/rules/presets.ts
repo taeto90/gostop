@@ -52,7 +52,11 @@ export type PresetId =
   | 'nagari'
   | 'myungdda'
   | 'last-turn-sweep'
-  | 'joker-flip';
+  | 'joker-flip'
+  // 보너스피 (사용자 룰)
+  | 'bonus-pi-hand'
+  | 'bonus-pi-draw'
+  | 'bonus-pi-ppeok-stuck';
 
 /**
  * Preset 카드 명시 — 모두 optional. 명시된 곳에만 카드 고정.
@@ -69,6 +73,16 @@ export interface PresetSetup {
   botCollected?: readonly string[];
   field?: readonly string[];
   drawTop?: readonly string[];
+  /**
+   * 보너스피(투피=2 / 쓰리피=3) 강제 위치.
+   * 일반 카드와 달리 DECK에 없으므로 ID 명시 불가 — value로 지정.
+   * - atMyHand: 본인 손패 앞에 삽입 (HAND_SIZE 초과 시 마지막 일반 카드부터 더미로 밀어냄)
+   * - atDrawTop: drawTop 시퀀스 앞에 삽입 (다음 뽑힘 순서)
+   */
+  bonusPi?: {
+    atMyHand?: readonly (2 | 3)[];
+    atDrawTop?: readonly (2 | 3)[];
+  };
 }
 
 export const PRESETS: Record<PresetId, PresetSetup> = {
@@ -281,4 +295,28 @@ export const PRESETS: Record<PresetId, PresetSetup> = {
   },
   // 조커: jokerCount=1 RoomRules에서 직접 설정 + 정상 분배
   'joker-flip': {},
+
+  // ===========================================================================
+  // 보너스피 시나리오 (사용자 룰)
+  // ===========================================================================
+  // 손에서 투피 내기 → 점수판 직행 + 상대 피 1장 뺏기 + 더미 1장 뒤집기
+  'bonus-pi-hand': {
+    bonusPi: { atMyHand: [2] },
+  },
+  // 더미에서 쓰리피 뒤집힘 → 점수판 직행 + 더미 1장 추가 뒤집기 (체인)
+  'bonus-pi-draw': {
+    myHand: ['m01-pi-1'],
+    field: ['m01-pi-2'],
+    drawTop: ['m02-pi-1'],
+    bonusPi: { atDrawTop: [3] },
+  },
+  // 뻑 형성 중 보너스피 끼임:
+  // 손에서 1월 → 바닥 1월과 매칭 → 더미에서 보너스피 → 더미에서 또 1월 (뻑)
+  // 결과: 보너스피는 뻑에 stuck. 회수자가 보너스피 + 1 stealPi 추가
+  'bonus-pi-ppeok-stuck': {
+    myHand: ['m02-pi-1', 'm01-pi-1'],
+    field: ['m01-pi-2'],
+    drawTop: ['m01-ddi'], // 1월 뻑 trigger
+    bonusPi: { atDrawTop: [2] }, // 손→매칭 → 보너스피 → 1월(뻑)
+  },
 };

@@ -92,10 +92,14 @@ export function calculateScore(
   if (cheongCount >= 3) dan += 3;
   if (choCount >= 3) dan += 3;
 
-  // 피 점수 (쌍피는 2장 가치)
+  // 피 점수 (쌍피는 2장 가치, 쓰리피는 3장 가치)
   // 9월 끗(m09-yeol)을 쌍피로 변환은 `nineYeolAsSsangPi` 옵션이 위에서 처리 — 정통 한국 룰
   // (`allowGukJoon` 옵션은 m09-ssangpi 정의가 별도 쌍피였던 시절의 잔재 — default true로 무영향)
-  const piValue = piCards.reduce((sum, c) => (c.isSsangPi ? sum + 2 : sum + 1), 0);
+  const piValue = piCards.reduce(
+    (sum, c) =>
+      c.bonusPiValue === 3 ? sum + 3 : c.isSsangPi ? sum + 2 : sum + 1,
+    0,
+  );
   const pi = piValue >= 10 ? 1 + (piValue - 10) : 0;
 
   const total = gwang + yeol + godori + ddi + dan + pi;

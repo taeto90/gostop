@@ -33,7 +33,7 @@ export function getMatchableCardsFromHand(
   field: readonly Card[],
 ): Card[] {
   return hand.filter(
-    (card) => !card.isBomb && !card.isJoker && findMatches(field, card).length > 0,
+    (card) => !card.isBomb && !card.isJoker && !card.isBonusPi && findMatches(field, card).length > 0,
   );
 }
 
@@ -91,7 +91,7 @@ export function detectShakesAndBombs(hand: readonly Card[]): {
 } {
   const groups = new Map<Month, Card[]>();
   for (const c of hand) {
-    if (c.isBomb || c.isJoker) continue;
+    if (c.isBomb || c.isJoker || c.isBonusPi) continue;
     const arr = groups.get(c.month) ?? [];
     arr.push(c);
     groups.set(c.month, arr);

@@ -1,16 +1,17 @@
 /**
- * 게임 로그 시스템 — dev only (NODE_ENV !== 'production').
+ * 게임 로그 시스템 — 파일(dev) + Supabase game_logs 테이블(env 설정 시).
  *
- * 각 게임마다 별도 JSON 파일 생성 (logs/game-{roomId}-{instanceId}-{timestamp}.json).
- * 매 액션마다 append 후 게임 종료 시 validation 결과 추가.
+ * 저장처:
+ *   - **파일** (dev only, NODE_ENV !== 'production'):
+ *     logs/game-{roomId}-{instanceId}-{timestamp}.json — 매 액션 append
+ *   - **Supabase game_logs** (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY 설정 시):
+ *     게임 종료 시 buffered entries를 batch insert (네트워크 비용 절감)
  *
  * 검증 항목 (rules-final.md):
  *   1. 순서 — turn 이동이 players 배열 순환 순서대로인가
  *   2. 점수 계산 — calculateScore 결과 (final score과 일치)
  *   3. 카드 중복 — 모든 위치(hand/collected/field/deck) 합쳐서 ID 중복 없는가
  *   4. 피 빼앗기 — stealPi가 옳게 적용 (from/to 카드 ID 정확)
- *
- * production에서는 모든 함수가 no-op (성능/디스크 영향 X).
  */
 
 import { existsSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
@@ -18,8 +19,10 @@ import { join } from 'node:path';
 import { cwd } from 'node:process';
 import type { Card, Room, TurnSpecials } from '@gostop/shared';
 import { calculateScore } from '@gostop/shared';
+import { supabaseAdmin } from '../lib/supabase.ts';
 
-const ENABLED = process.env.NODE_ENV !== 'production';
+const FILE_ENABLED = process.env.NODE_ENV !== 'production';
+const DB_ENABLED = supabaseAdmin !== null;
 const LOG_DIR = join(cwd(), 'logs');
 
 interface GameLogEntry {
@@ -29,8 +32,11 @@ interface GameLogEntry {
   [key: string]: unknown;
 }
 
-// roomId-instanceId → filepath
+// roomId-instanceId → filepath (file mode)
 const activeLogs = new Map<string, string>();
+
+// roomId-instanceId → buffered entries (DB batch mode)
+const activeBuffers = new Map<string, GameLogEntry[]>();
 
 function logKey(room: Room): string {
   return `${room.id}-${room.gameInstanceId ?? 0}`;
@@ -79,63 +85,83 @@ function piCounts(cards: readonly Card[]): { normal: number; ssang: number } {
 
 /** 게임 시작 — 새 로그 파일 생성 (분배 상태 + 룰 snapshot) */
 export function startGameLog(room: Room): void {
-  if (!ENABLED) return;
+  if (!FILE_ENABLED && !DB_ENABLED) return;
   if (!room.game) return;
-  try {
-    ensureDir();
-    const key = logKey(room);
-    const ts = Date.now();
-    const filename = `game-${room.id}-${room.gameInstanceId ?? 0}-${ts}.json`;
-    const filepath = join(LOG_DIR, filename);
-    activeLogs.set(key, filepath);
+  const key = logKey(room);
+  const ts = Date.now();
 
-    const dup = collectAllCardIds(room);
-    const header = {
-      schemaVersion: 1,
-      type: 'game-start',
-      ts,
-      roomId: room.id,
-      gameInstanceId: room.gameInstanceId ?? 0,
-      rules: room.rules,
-      testMode: room.testMode,
-      testPreset: room.testPreset,
-      players: room.players.map((p) => ({
-        id: p.id,
-        nickname: p.nickname,
-        handCount: p.hand.length,
-        hand: p.hand.map((c) => c.id),
-        collected: p.collected.map((c) => c.id),
-        flags: p.flags,
-      })),
-      field: room.game.field.map((c) => c.id),
-      deckCount: room.game.deck.length,
-      turnPlayerId: room.game.turnPlayerId,
-      stuckOwners: room.stuckOwners,
-      chongtongUserId: room.chongtongUserId,
-      cardCheck: {
-        totalCardCount: dup.total,
-        uniqueCardCount: dup.unique,
-        duplicates: dup.duplicates,
-        valid: dup.duplicates.length === 0,
-      },
-    };
-    writeFileSync(filepath, JSON.stringify(header, null, 2) + '\n');
-    appendFileSync(filepath, '"--- entries ---"\n');
-  } catch (e) {
-    console.warn('[gameLog] startGameLog failed:', e);
+  const dup = collectAllCardIds(room);
+  const header: GameLogEntry = {
+    schemaVersion: 1,
+    type: 'game-start',
+    ts,
+    env: process.env.NODE_ENV === 'production' ? 'production' : 'development',
+    roomId: room.id,
+    gameInstanceId: room.gameInstanceId ?? 0,
+    rules: room.rules,
+    testMode: room.testMode,
+    testPreset: room.testPreset,
+    players: room.players.map((p) => ({
+      id: p.id,
+      nickname: p.nickname,
+      handCount: p.hand.length,
+      hand: p.hand.map((c) => c.id),
+      collected: p.collected.map((c) => c.id),
+      flags: p.flags,
+    })),
+    field: room.game.field.map((c) => c.id),
+    deckCount: room.game.deck.length,
+    turnPlayerId: room.game.turnPlayerId,
+    stuckOwners: room.stuckOwners,
+    chongtongUserId: room.chongtongUserId,
+    cardCheck: {
+      totalCardCount: dup.total,
+      uniqueCardCount: dup.unique,
+      duplicates: dup.duplicates,
+      valid: dup.duplicates.length === 0,
+    },
+  };
+
+  // DB buffer 시작
+  if (DB_ENABLED) {
+    activeBuffers.set(key, [header]);
+  }
+
+  // File 모드
+  if (FILE_ENABLED) {
+    try {
+      ensureDir();
+      const filename = `game-${room.id}-${room.gameInstanceId ?? 0}-${ts}.json`;
+      const filepath = join(LOG_DIR, filename);
+      activeLogs.set(key, filepath);
+      writeFileSync(filepath, JSON.stringify(header, null, 2) + '\n');
+      appendFileSync(filepath, '"--- entries ---"\n');
+    } catch (e) {
+      console.warn('[gameLog] startGameLog file failed:', e);
+    }
   }
 }
 
 /** 액션 entry append — type별 자유 payload */
 export function appendGameLog(room: Room, entry: GameLogEntry): void {
-  if (!ENABLED) return;
+  if (!FILE_ENABLED && !DB_ENABLED) return;
   const key = logKey(room);
-  const filepath = activeLogs.get(key);
-  if (!filepath) return;
-  try {
-    appendFileSync(filepath, JSON.stringify(entry) + '\n');
-  } catch (e) {
-    console.warn('[gameLog] appendGameLog failed:', e);
+
+  // DB buffer
+  if (DB_ENABLED) {
+    const buf = activeBuffers.get(key);
+    if (buf) buf.push(entry);
+  }
+
+  // File
+  if (FILE_ENABLED) {
+    const filepath = activeLogs.get(key);
+    if (!filepath) return;
+    try {
+      appendFileSync(filepath, JSON.stringify(entry) + '\n');
+    } catch (e) {
+      console.warn('[gameLog] appendGameLog file failed:', e);
+    }
   }
 }
 
@@ -151,7 +177,7 @@ export function logPlayCard(
   prevHandCounts: Record<string, number>,
   prevCollectedCounts: Record<string, { normal: number; ssang: number }>,
 ): void {
-  if (!ENABLED) return;
+  if (!FILE_ENABLED && !DB_ENABLED) return;
   if (!room.game) return;
 
   const playerIds = room.players.map((p) => p.id);
@@ -261,46 +287,89 @@ export function logPlayCard(
   });
 }
 
-/** 게임 종료 — final summary + 닫힘 */
+/** 게임 종료 — final summary + 닫힘. DB는 batch insert */
 export function endGameLog(room: Room): void {
-  if (!ENABLED) return;
+  if (!FILE_ENABLED && !DB_ENABLED) return;
   const key = logKey(room);
-  const filepath = activeLogs.get(key);
-  if (!filepath) return;
-  try {
-    const dup = collectAllCardIds(room);
-    const finalScores: Record<string, number> = {};
-    for (const p of room.players) {
-      const s = calculateScore(p.collected, {
-        nineYeolAsSsangPi: p.flags.nineYeolAsSsangPi ?? false,
-        allowGukJoon: room.rules.allowGukJoon,
-      });
-      finalScores[p.id] = s.total;
+
+  const dup = collectAllCardIds(room);
+  const finalScores: Record<string, number> = {};
+  for (const p of room.players) {
+    const s = calculateScore(p.collected, {
+      nineYeolAsSsangPi: p.flags.nineYeolAsSsangPi ?? false,
+      allowGukJoon: room.rules.allowGukJoon,
+    });
+    finalScores[p.id] = s.total;
+  }
+
+  const endEntry: GameLogEntry = {
+    ts: Date.now(),
+    type: 'game-end',
+    phase: room.phase,
+    finalScores,
+    ppeoksCaused: Object.fromEntries(
+      room.players.map((p) => [p.id, p.flags.ppeoksCaused]),
+    ),
+    goCounts: Object.fromEntries(room.players.map((p) => [p.id, p.goCount])),
+    cardCheck: {
+      totalCardCount: dup.total,
+      uniqueCardCount: dup.unique,
+      duplicates: dup.duplicates,
+      valid: dup.duplicates.length === 0,
+    },
+    chongtongUserId: room.chongtongUserId,
+  };
+
+  // File
+  if (FILE_ENABLED) {
+    const filepath = activeLogs.get(key);
+    if (filepath) {
+      try {
+        appendFileSync(filepath, JSON.stringify(endEntry) + '\n');
+        console.log(`[gameLog] file saved ${filepath}`);
+      } catch (e) {
+        console.warn('[gameLog] endGameLog file failed:', e);
+      }
+      activeLogs.delete(key);
     }
-    appendFileSync(
-      filepath,
-      JSON.stringify({
-        ts: Date.now(),
-        type: 'game-end',
-        phase: room.phase,
-        finalScores,
-        ppeoksCaused: Object.fromEntries(
-          room.players.map((p) => [p.id, p.flags.ppeoksCaused]),
-        ),
-        goCounts: Object.fromEntries(room.players.map((p) => [p.id, p.goCount])),
-        cardCheck: {
-          totalCardCount: dup.total,
-          uniqueCardCount: dup.unique,
-          duplicates: dup.duplicates,
-          valid: dup.duplicates.length === 0,
-        },
-        chongtongUserId: room.chongtongUserId,
-      }) + '\n',
-    );
-    activeLogs.delete(key);
-    console.log(`[gameLog] saved ${filepath}`);
+  }
+
+  // DB batch insert
+  if (DB_ENABLED) {
+    const buf = activeBuffers.get(key);
+    if (buf) {
+      buf.push(endEntry);
+      void flushToDb(room.id, room.gameInstanceId ?? 0, buf);
+    }
+    activeBuffers.delete(key);
+  }
+}
+
+/** Supabase game_logs 테이블에 batch insert — fire-and-forget */
+async function flushToDb(
+  roomId: string,
+  gameInstanceId: number,
+  entries: GameLogEntry[],
+): Promise<void> {
+  if (!supabaseAdmin) return;
+  const rows = entries.map((e) => ({
+    room_id: roomId,
+    game_instance_id: gameInstanceId,
+    ts: typeof e.ts === 'number' ? e.ts : Date.now(),
+    type: typeof e.type === 'string' ? e.type : 'unknown',
+    payload: e,
+  }));
+  try {
+    const { error } = await supabaseAdmin.from('game_logs').insert(rows);
+    if (error) {
+      console.warn('[gameLog] supabase insert failed:', error.message);
+    } else {
+      console.log(
+        `[gameLog] supabase saved ${rows.length} entries for ${roomId}-${gameInstanceId}`,
+      );
+    }
   } catch (e) {
-    console.warn('[gameLog] endGameLog failed:', e);
+    console.warn('[gameLog] supabase insert exception:', e);
   }
 }
 
@@ -316,4 +385,9 @@ export function captureCounts(room: Room): {
     pis[p.id] = piCounts(p.collected);
   }
   return { hands, pis };
+}
+
+/** 환경 가용성 — 진단용 export */
+export function getLogStatus(): { file: boolean; db: boolean } {
+  return { file: FILE_ENABLED, db: DB_ENABLED };
 }

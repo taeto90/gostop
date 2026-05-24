@@ -8,4 +8,8 @@ export const config = {
   LIVEKIT_URL: process.env.LIVEKIT_URL ?? '',
   LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY ?? '',
   LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET ?? '',
+  // Supabase — game_logs 테이블 batch insert용 (server-side, service role key 필요)
+  SUPABASE_URL: process.env.SUPABASE_URL ?? '',
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+  SUPABASE_JWT_SECRET: process.env.SUPABASE_JWT_SECRET ?? '',
 } as const;

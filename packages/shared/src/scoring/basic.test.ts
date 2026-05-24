@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getCardById } from '../cards/deck.ts';
+import { createBonusPiCard, getCardById } from '../cards/deck.ts';
 import { calculateScore, canDeclareGoStop } from './basic.ts';
 import type { Card } from '../types/card.ts';
 
@@ -229,6 +229,48 @@ describe('calculateScore — 피', () => {
       card('m06-pi-1'),
     ];
     expect(calculateScore(cards).pi).toBe(2);
+  });
+
+  it('투피(보너스피, value=2) = 쌍피와 동일 — 피 8장 + 투피 1장 = 1점', () => {
+    const cards = [
+      card('m01-pi-1'),
+      card('m01-pi-2'),
+      card('m02-pi-1'),
+      card('m02-pi-2'),
+      card('m03-pi-1'),
+      card('m03-pi-2'),
+      card('m04-pi-1'),
+      card('m04-pi-2'),
+      createBonusPiCard(2), // 가치 2
+    ];
+    expect(calculateScore(cards).pi).toBe(1);
+  });
+
+  it('쓰리피(보너스피, value=3) = 피 3장 가치 — 피 7장 + 쓰리피 1장 = 1점', () => {
+    const cards = [
+      card('m01-pi-1'),
+      card('m01-pi-2'),
+      card('m02-pi-1'),
+      card('m02-pi-2'),
+      card('m03-pi-1'),
+      card('m03-pi-2'),
+      card('m04-pi-1'),
+      createBonusPiCard(3), // 가치 3
+    ];
+    expect(calculateScore(cards).pi).toBe(1);
+  });
+
+  it('투피 + 쓰리피 = 가치 5 → 피 5장 + 보너스피 = 1점', () => {
+    const cards = [
+      card('m01-pi-1'),
+      card('m01-pi-2'),
+      card('m02-pi-1'),
+      card('m02-pi-2'),
+      card('m03-pi-1'),
+      createBonusPiCard(2),
+      createBonusPiCard(3),
+    ];
+    expect(calculateScore(cards).pi).toBe(1);
   });
 });
 

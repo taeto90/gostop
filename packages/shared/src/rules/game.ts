@@ -1,5 +1,11 @@
 import type { Card } from '../types/card.ts';
-import { createJokerCard, createShuffledDeck, DECK, getCardById } from '../cards/deck.ts';
+import {
+  createBonusPiCard,
+  createJokerCard,
+  createShuffledDeck,
+  DECK,
+  getCardById,
+} from '../cards/deck.ts';
 import { playCard } from './matching.ts';
 import type { PresetSetup } from './presets.ts';
 
@@ -20,6 +26,10 @@ export interface DealResult {
 export interface DealOptions {
   /** 조커 카드 추가 장수 (default 0). 셔플 후 분배 — 더미가 N장 늘어남. */
   jokerCount?: 0 | 1 | 2 | 3;
+  /** 투피(피 2장 가치) 보너스 카드 수 (default 0) */
+  bonusPiTwoCount?: 0 | 1 | 2;
+  /** 쓰리피(피 3장 가치) 보너스 카드 수 (default 0) */
+  bonusPiThreeCount?: 0 | 1;
   /**
    * 테스트 모드 — preset이 없으면 손패 1장 + 바닥 1장만 분배 (나머지는 더미).
    * preset 명시 시 명시된 카드만 고정하고 나머지는 정상 분배.
@@ -27,6 +37,18 @@ export interface DealOptions {
   testMode?: boolean;
   /** 테스트 모드 preset 카드 셋업 (testMode=true일 때만 적용) */
   preset?: PresetSetup;
+}
+
+/** 옵션에서 추가 특수 카드 (조커 + 보너스피) 생성 — 셔플에 합쳐서 사용 */
+function buildExtraCards(opts: DealOptions): Card[] {
+  const extras: Card[] = [];
+  const jokerCount = opts.jokerCount ?? 0;
+  for (let i = 0; i < jokerCount; i++) extras.push(createJokerCard());
+  const twoCount = opts.bonusPiTwoCount ?? 0;
+  for (let i = 0; i < twoCount; i++) extras.push(createBonusPiCard(2));
+  const threeCount = opts.bonusPiThreeCount ?? 0;
+  for (let i = 0; i < threeCount; i++) extras.push(createBonusPiCard(3));
+  return extras;
 }
 
 /** 분배 시 같은 월 4장이 모두 바닥에 깔린 경우 reshuffle 최대 시도 횟수 */
@@ -49,7 +71,7 @@ export function dealNewGame(
 
   // testMode + preset → preset 카드 고정 분배 (정상 인원수 손패/바닥 유지)
   if (options.testMode && options.preset) {
-    return dealWithPreset(playerIds, options.preset, rng, options.jokerCount ?? 0);
+    return dealWithPreset(playerIds, options.preset, rng, options);
   }
   // testMode만 — 손패 1장 + 바닥 1장 (기존 흐름 검증용)
   if (options.testMode) {
@@ -66,11 +88,11 @@ export function dealNewGame(
   return dealOnce(playerIds, rng, options);
 }
 
-/** 바닥 카드 중 같은 월 4장이 모두 깔렸는지 검사 (조커 제외 — 매칭 X) */
+/** 바닥 카드 중 같은 월 4장이 모두 깔렸는지 검사 (조커/보너스피 제외 — 매칭 X) */
 function hasFieldAllSameMonth(field: readonly Card[]): boolean {
   const counts = new Map<number, number>();
   for (const c of field) {
-    if (c.isJoker) continue;
+    if (c.isJoker || c.isBonusPi) continue;
     counts.set(c.month, (counts.get(c.month) ?? 0) + 1);
   }
   for (const count of counts.values()) {
@@ -89,7 +111,7 @@ export function dealWithPreset(
   playerIds: readonly string[],
   setup: PresetSetup,
   rng?: () => number,
-  jokerCount = 0,
+  extraOpts: DealOptions = {},
 ): DealResult {
   const HAND_SIZE = playerIds.length === 2 ? 10 : 7;
   const FIELD_SIZE = playerIds.length === 2 ? 8 : 6;
@@ -125,9 +147,12 @@ export function dealWithPreset(
   const collected: Record<string, Card[]> = {};
   let cursor = 0;
 
-  // 본인 (players[0]) 손패 + collected
+  // 본인 (players[0]) 손패 + collected — preset.bonusPi.atMyHand 명시 시 보너스피 카드 삽입
   const me = playerIds[0]!;
-  hands[me] = [...resolveIds(setup.myHand)];
+  const myHandBonus = (setup.bonusPi?.atMyHand ?? []).map((v) =>
+    createBonusPiCard(v),
+  );
+  hands[me] = [...resolveIds(setup.myHand), ...myHandBonus];
   collected[me] = [...resolveIds(setup.myCollected)];
   while (hands[me]!.length < HAND_SIZE) hands[me]!.push(shuffled[cursor++]!);
 
@@ -150,12 +175,17 @@ export function dealWithPreset(
   const field = [...resolveIds(setup.field)];
   while (field.length < FIELD_SIZE) field.push(shuffled[cursor++]!);
 
-  // 더미: drawTop (FIFO) + 나머지 셔플 + 조커 (있으면 셔플 안에 섞음)
-  const drawTop = resolveIds(setup.drawTop);
+  // 더미: drawTop (FIFO) + 나머지 셔플 + 추가 특수 카드 (조커/보너스피)
+  // preset.bonusPi.atDrawTop: drawTop 시퀀스에 보너스피 카드 명시 삽입 (resolveIds 뒤)
+  const drawTopBonus = (setup.bonusPi?.atDrawTop ?? []).map((v) =>
+    createBonusPiCard(v),
+  );
+  // 보너스피를 명시 카드 *앞에* 두어 첫 뽑힘에 발동되게 함 (체인 테스트)
+  const drawTop = [...drawTopBonus, ...resolveIds(setup.drawTop)];
   let restDeck = shuffled.slice(cursor);
-  if (jokerCount > 0) {
-    const jokers = Array.from({ length: jokerCount }, () => createJokerCard());
-    restDeck = [...restDeck, ...jokers];
+  const extras = buildExtraCards(extraOpts);
+  if (extras.length > 0) {
+    restDeck = [...restDeck, ...extras];
     for (let i = restDeck.length - 1; i > 0; i--) {
       const j = Math.floor(r() * (i + 1));
       const tmp = restDeck[i]!;
@@ -175,11 +205,10 @@ function dealOnce(
   options: DealOptions,
 ): DealResult {
   let shuffled = createShuffledDeck(rng);
-  // 조커 카드 옵션 — DECK 48장 + 조커 N장을 합쳐 다시 셔플
-  const jokerCount = options.jokerCount ?? 0;
-  if (jokerCount > 0) {
-    const jokers = Array.from({ length: jokerCount }, () => createJokerCard());
-    shuffled = [...shuffled, ...jokers];
+  // 추가 특수 카드 (조커 + 보너스피) — DECK 48장에 합쳐 다시 셔플
+  const extras = buildExtraCards(options);
+  if (extras.length > 0) {
+    shuffled = [...shuffled, ...extras];
     // Fisher-Yates로 다시 한번 셔플
     const r = rng ?? Math.random;
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -285,6 +314,17 @@ export interface TurnSpecials {
   /** 상대로부터 빼앗을 피 카드 수 (특수 룰 누적) */
   stealPi: number;
   /**
+   * 이번 턴 본인이 가져간 보너스피(투피/쓰리피) 카드 수.
+   * server는 모든 상대로부터 이 수만큼 1장씩 stealPi 적용 (3인 게임이면 1보너스피=2장 뺏기).
+   * 조커는 카운트 X (사용자 룰 — 보너스피만 stealPi).
+   */
+  bonusPiCollected: number;
+  /**
+   * 이번 턴 본인이 가져간 보너스피 카드 실제 list — server가 뻑 stuck 이동 시 필요.
+   * 뻑(ppeokMonth) 발생 시 server는 이 카드들을 player.collected에서 빼서 stuckBonusPis로 옮김.
+   */
+  bonusPiCards?: Card[];
+  /**
    * 빼앗은 피 카드 상세 — server stealPiFromOpponents가 set.
    * client Phase 5에서 상대 collected → 본인 collected 비행 시각효과용.
    * shared executeTurn 단계에서는 빈 배열, server playCardForPlayer/aiTurn이 채움.
@@ -296,6 +336,87 @@ export interface TurnResult {
   newState: TurnState;
   events: TurnEvent[];
   specials: TurnSpecials;
+}
+
+/**
+ * 더미 1장 뒤집기 — 보너스피/조커가 나오면 즉시 점수판으로 보내고 다음 카드 뽑기 (체인).
+ * 일반 카드 1장 뽑으면 반환. 더미 비면 drawnCard=undefined.
+ *
+ * 정통 한국 룰: 보너스피/조커는 매칭 X, 점수판 직행 + 더미 추가 뒤집기.
+ */
+interface DrawSkipResult {
+  drawnCard: Card | undefined;
+  newDeck: Card[];
+  newCollected: Card[];
+  bonusEvents: TurnEvent[];
+  /** 뒤집기 체인 중 가져간 보너스피(투피/쓰리피) 카드 수 — 조커는 카운트 X */
+  bonusPiCount: number;
+  /** 가져간 보너스피 카드 실제 list (뻑 stuck 이동용) */
+  bonusPiCards: Card[];
+}
+
+/** drawSkippingBonus 결과를 specials/events에 일괄 누적 — 4개 path 공통 */
+function mergeBonusDraw(
+  draw: DrawSkipResult,
+  events: TurnEvent[],
+  specials: TurnSpecials,
+): void {
+  events.push(...draw.bonusEvents);
+  specials.bonusPiCollected += draw.bonusPiCount;
+  if (draw.bonusPiCards.length > 0) {
+    specials.bonusPiCards = [
+      ...(specials.bonusPiCards ?? []),
+      ...draw.bonusPiCards,
+    ];
+  }
+}
+
+function drawSkippingBonus(
+  deck: readonly Card[],
+  collected: readonly Card[],
+  field: readonly Card[],
+): DrawSkipResult {
+  let workDeck = [...deck];
+  const workCollected = [...collected];
+  const bonusEvents: TurnEvent[] = [];
+  let bonusPiCount = 0;
+  const bonusPiCards: Card[] = [];
+
+  while (workDeck.length > 0) {
+    const next = workDeck[0]!;
+    workDeck = workDeck.slice(1);
+    if (next.isJoker || next.isBonusPi) {
+      workCollected.push(next);
+      if (next.isBonusPi) {
+        bonusPiCount += 1;
+        bonusPiCards.push(next);
+      }
+      bonusEvents.push({
+        step: 'draw',
+        card: next,
+        result: 'matched',
+        collectedCards: [next],
+        fieldAfter: [...field],
+      });
+      continue;
+    }
+    return {
+      drawnCard: next,
+      newDeck: workDeck,
+      newCollected: workCollected,
+      bonusEvents,
+      bonusPiCount,
+      bonusPiCards,
+    };
+  }
+  return {
+    drawnCard: undefined,
+    newDeck: workDeck,
+    newCollected: workCollected,
+    bonusEvents,
+    bonusPiCount,
+    bonusPiCards,
+  };
 }
 
 /**
@@ -316,11 +437,22 @@ export function executeTurn(
   const newHand = [...state.hand.slice(0, handCardIndex), ...state.hand.slice(handCardIndex + 1)];
 
   const allowPpeok = options.allowSpecials ?? false;
-  const specials: TurnSpecials = { ttadak: false, jjok: false, sweep: false, stealPi: 0 };
+  const specials: TurnSpecials = {
+    ttadak: false,
+    jjok: false,
+    sweep: false,
+    stealPi: 0,
+    bonusPiCollected: 0,
+  };
 
-  // 조커 카드 처리 — 옵션 룰. 매칭 X, 손패 → collected 이동 + 더미 1장 뒤집기.
-  // (rule3·rule4: 조커는 보통 쌍피로 활용, isSsangPi=true로 collected에 들어감)
-  if (handCard.isJoker) {
+  // 조커/보너스피 카드 처리 — 옵션 룰. 매칭 X, 손패 → collected 이동 + 더미 1장 뒤집기.
+  // (조커: 쌍피 가치 / 투피: 쌍피 가치 / 쓰리피: 피 3장 가치 — isSsangPi=true 표시로 통합)
+  if (handCard.isJoker || handCard.isBonusPi) {
+    // 손에서 낸 카드가 보너스피면 카운트 (조커는 X — 사용자 룰)
+    if (handCard.isBonusPi) {
+      specials.bonusPiCollected += 1;
+      specials.bonusPiCards = [...(specials.bonusPiCards ?? []), handCard];
+    }
     const events: TurnEvent[] = [
       {
         step: 'play-hand',
@@ -341,8 +473,18 @@ export function executeTurn(
       };
     }
 
-    const drawnCard = state.deck[0]!;
-    const newDeck = state.deck.slice(1);
+    // 더미 1장 뽑기 — 보너스피/조커가 또 나오면 점수판 직행 + 다음 카드 (체인)
+    const draw = drawSkippingBonus(state.deck, collected, field);
+    mergeBonusDraw(draw, events, specials);
+    collected = draw.newCollected;
+    if (draw.drawnCard === undefined) {
+      return {
+        newState: { hand: newHand, collected, field, deck: draw.newDeck },
+        events,
+        specials,
+      };
+    }
+    const drawnCard = draw.drawnCard;
     const drawResult = playCard(drawnCard, field, {
       targetCardId: options.targetAfterDraw,
       allowPpeok,
@@ -379,7 +521,7 @@ export function executeTurn(
     }
 
     return {
-      newState: { hand: newHand, collected, field, deck: newDeck },
+      newState: { hand: newHand, collected, field, deck: draw.newDeck },
       events,
       specials,
     };
@@ -400,8 +542,18 @@ export function executeTurn(
       };
     }
 
-    const drawnCard = state.deck[0]!;
-    const newDeck = state.deck.slice(1);
+    // 더미 뽑기 — 보너스피/조커 자동 점수판 + 체인 처리
+    const draw = drawSkippingBonus(state.deck, collected, field);
+    mergeBonusDraw(draw, events, specials);
+    collected = draw.newCollected;
+    if (draw.drawnCard === undefined) {
+      return {
+        newState: { hand: newHand, collected, field, deck: draw.newDeck },
+        events,
+        specials,
+      };
+    }
+    const drawnCard = draw.drawnCard;
     const drawResult = playCard(drawnCard, field, {
       targetCardId: options.targetAfterDraw,
       allowPpeok,
@@ -442,7 +594,7 @@ export function executeTurn(
     }
 
     return {
-      newState: { hand: newHand, collected, field, deck: newDeck },
+      newState: { hand: newHand, collected, field, deck: draw.newDeck },
       events,
       specials,
     };
@@ -497,9 +649,25 @@ export function executeTurn(
       };
     }
 
-    // 더미에서 1장 뒤집기 (일반 진행)
-    const drawnCard = state.deck[0]!;
-    const newDeck = state.deck.slice(1);
+    // 더미에서 1장 뒤집기 — 보너스피/조커 자동 점수판 + 체인
+    const draw = drawSkippingBonus(state.deck, collected, field);
+    mergeBonusDraw(draw, events, specials);
+    collected = draw.newCollected;
+    if (draw.drawnCard === undefined) {
+      if (field.length === 0 && !options.isLastTurn) {
+        specials.sweep = true;
+        specials.stealPi += 1;
+      } else if (field.length === 0) {
+        specials.sweep = true;
+      }
+      return {
+        newState: { hand: bombHand, collected, field, deck: draw.newDeck },
+        events,
+        specials,
+      };
+    }
+    const drawnCard = draw.drawnCard;
+    const newDeck = draw.newDeck;
     const drawResult = playCard(drawnCard, field, {
       targetCardId: options.targetAfterDraw,
       allowPpeok,
@@ -588,9 +756,24 @@ export function executeTurn(
     };
   }
 
-  // 3. 더미에서 카드 1장 뒤집기
-  const drawnCard = state.deck[0]!;
-  const newDeck = state.deck.slice(1);
+  // 3. 더미에서 카드 1장 뒤집기 — 보너스피/조커 자동 점수판 + 체인
+  const draw = drawSkippingBonus(state.deck, collected, field);
+  mergeBonusDraw(draw, events, specials);
+  collected = draw.newCollected;
+  if (draw.drawnCard === undefined) {
+    // 보너스피 체인 후 더미 비었으면 종료
+    if (handResult.collected.length > 0 && field.length === 0) {
+      specials.sweep = true;
+      if (!options.isLastTurn) specials.stealPi += 1;
+    }
+    return {
+      newState: { hand: newHand, collected, field, deck: draw.newDeck },
+      events,
+      specials,
+    };
+  }
+  const drawnCard = draw.drawnCard;
+  const newDeck = draw.newDeck;
 
   // 4. 뒤집힌 카드 → 바닥 매칭
   const drawResult = playCard(drawnCard, field, {
@@ -734,8 +917,8 @@ export function simulateOrNeedsSelection(
   }
   const handCard = state.hand[handCardIndex]!;
 
-  // 폭탄/조커 카드는 선택 불필요 — executeTurn 직접 호출
-  if (handCard.isBomb || handCard.isJoker) {
+  // 폭탄/조커/보너스피 카드는 선택 불필요 — executeTurn 직접 호출
+  if (handCard.isBomb || handCard.isJoker || handCard.isBonusPi) {
     return { result: executeTurn(state, handCardId, options) };
   }
 

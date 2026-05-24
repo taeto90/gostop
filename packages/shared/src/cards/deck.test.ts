@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DECK, createShuffledDeck, getCardById } from './deck.ts';
+import { DECK, createShuffledDeck, getCardById, createBonusPiCard } from './deck.ts';
 
 describe('DECK', () => {
   it('정확히 48장이다', () => {
@@ -113,5 +113,30 @@ describe('getCardById', () => {
 
   it('없는 카드는 undefined를 반환한다', () => {
     expect(getCardById('m99-fake')).toBeUndefined();
+  });
+});
+
+describe('createBonusPiCard', () => {
+  it('투피 = isBonusPi + bonusPiValue=2 + isSsangPi (쌍피 호환)', () => {
+    const c = createBonusPiCard(2);
+    expect(c.isBonusPi).toBe(true);
+    expect(c.bonusPiValue).toBe(2);
+    expect(c.isSsangPi).toBe(true);
+    expect(c.kind).toBe('pi');
+  });
+
+  it('쓰리피 = bonusPiValue=3', () => {
+    const c = createBonusPiCard(3);
+    expect(c.bonusPiValue).toBe(3);
+    expect(c.isBonusPi).toBe(true);
+  });
+
+  it('같은 value 여러 장 생성해도 ID는 모두 다르다', () => {
+    const ids = new Set([
+      createBonusPiCard(2).id,
+      createBonusPiCard(2).id,
+      createBonusPiCard(3).id,
+    ]);
+    expect(ids.size).toBe(3);
   });
 });

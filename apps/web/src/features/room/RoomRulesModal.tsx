@@ -148,6 +148,26 @@ export function RoomRulesModal({
                 />
               </RuleSection>
 
+              <RuleSection title="✌️ 보너스피 — 투피">
+                <ChoiceRow
+                  options={[0, 1, 2] as const}
+                  value={rules.bonusPiTwoCount}
+                  onPick={(v) => update('bonusPiTwoCount', v)}
+                  format={(v) => (v === 0 ? '사용 X' : `${v}장`)}
+                  hint="투피 = 피 2장 가치 (쌍피와 동일). 매칭 X, 점수판 직행 + 더미 1장 뒤집기"
+                />
+              </RuleSection>
+
+              <RuleSection title="🤟 보너스피 — 쓰리피">
+                <ChoiceRow
+                  options={[0, 1] as const}
+                  value={rules.bonusPiThreeCount}
+                  onPick={(v) => update('bonusPiThreeCount', v)}
+                  format={(v) => (v === 0 ? '사용 X' : `${v}장`)}
+                  hint="쓰리피 = 피 3장 가치. 매칭 X, 점수판 직행 + 더미 1장 뒤집기"
+                />
+              </RuleSection>
+
               <RuleSection title="🎙️ 미디어 모드">
                 <ChoiceRow
                   options={['video', 'voice-only'] as const}

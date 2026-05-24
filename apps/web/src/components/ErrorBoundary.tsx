@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from 'react';
+import { reportError } from '../lib/errorReport.ts';
 
 interface Props {
   children: ReactNode;
@@ -23,6 +24,15 @@ export class ErrorBoundary extends Component<Props, State> {
     if (import.meta.env.DEV) {
       console.error('[ErrorBoundary]', error, info.componentStack);
     }
+    // Server에 자동 보고 — production 에러 추적용
+    reportError({
+      source: 'client:ErrorBoundary',
+      message: error.message,
+      context: {
+        stack: error.stack,
+        componentStack: info.componentStack,
+      },
+    });
   }
 
   override render() {

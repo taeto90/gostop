@@ -22,7 +22,7 @@ import { useNineYeolDecision } from '../../hooks/useNineYeolDecision.ts';
 import { PRESET_LABELS } from './RoomLobbyModal.tsx';
 import { computeMultiplier, multiplierBreakdown } from '../../lib/multiplierUtils.ts';
 import { useElementSize } from '../../hooks/useElementSize.ts';
-import { ChatPanel } from '../../components/ChatPanel.tsx';
+import { ChatPanel, ChatSidePanel, loadChatPanelWidth } from '../../components/ChatPanel.tsx';
 import { EmojiReactions } from '../../components/EmojiReactions.tsx';
 import { SettingsModal } from '../../components/SettingsModal.tsx';
 import { emitWithAck } from '../../lib/socket.ts';
@@ -123,6 +123,7 @@ export function GameView({
   const [rulesOpen, setRulesOpen] = useState(false);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatWidth, setChatWidth] = useState<number>(() => loadChatPanelWidth());
   const chatUnread = useChatStore((s) => s.unreadCount);
   const isHost = view.hostUserId === view.myUserId;
 
@@ -154,6 +155,7 @@ export function GameView({
     peakingHandCardId: multiPeekingId,
     flippingCardId: multiFlippingId,
     flippingPhase: multiFlippingPhase,
+    currentHandCardId,
     currentPhase: animationPhase,
     awaitingStep,
     continueStep,
@@ -362,32 +364,34 @@ export function GameView({
   }
 
   // Grid layout
-  // PC: [점수판 | 게임판 | (사이드바)] / 손패는 col-span 점수판+게임판 (사이드바 제외)
-  // 모바일: [점수판 | 게임판/손패]. 화상은 풀스크린 모달.
+  // PC: [점수판 | 게임판 | (채팅) | (화상)] / 손패는 점수판+게임판 col span
+  // 모바일: [점수판 | 게임판/손패]. 화상/채팅은 풀스크린 모달.
   const collectedW = isCompact ? COLLECTED_PANEL_WIDTH.mobile : COLLECTED_PANEL_WIDTH.pc;
   const showVideoSidebar = !isCompact && videoSidebar != null;
+  const showChatSide = !isCompact && chatOpen;
+  // PC grid columns: 점수판 | 게임판(1fr) | [채팅] | [화상]
   const gridCols = isCompact
     ? `${collectedW}px 1fr`
-    : showVideoSidebar
-      ? `${collectedW}px 1fr auto`
-      : `${collectedW}px 1fr`;
+    : `${collectedW}px 1fr${showChatSide ? ` ${chatWidth}px` : ''}${showVideoSidebar ? ' auto' : ''}`;
   const gridRows = `auto minmax(0, 1fr) ${handMin}px`;
   const gap = isCompact ? '2px' : '8px';
 
-  // 손패 grid 위치 — 모바일: col 2, PC: 점수판~사이드바 전체 (col 1~3)
+  // PC 컬럼 총 개수 + 채팅/화상 컬럼 인덱스 (1-based)
+  const pcTotalCols = 2 + (showChatSide ? 1 : 0) + (showVideoSidebar ? 1 : 0);
+  const chatColIndex = showChatSide ? 3 : null;
+  const videoColIndex = showVideoSidebar ? (showChatSide ? 4 : 3) : null;
+
+  // 손패 grid 위치 — 모바일: col 2,
+  // PC: 점수판~채팅 (화상 제외). 채팅창 열려도 손패는 채팅 컬럼 아래까지 차지해
+  // width 변화 영향 받지 않게 함 (게임판만 좁아짐).
+  const handPcSpan = 2 + (showChatSide ? 1 : 0);
   const handGridPlacement: React.CSSProperties = isCompact
     ? { gridColumn: '2 / span 1', gridRow: '3' }
-    : {
-        gridColumn: showVideoSidebar ? '1 / span 3' : '1 / span 2',
-        gridRow: '3',
-      };
-  // 헤더 grid 위치 — PC에서 사이드바 있으면 col 1~3 전체
+    : { gridColumn: `1 / span ${handPcSpan}`, gridRow: '3' };
+  // 헤더 grid 위치 — PC에서 전체 col span (채팅/화상 포함)
   const headerGridPlacement: React.CSSProperties = isCompact
     ? { gridColumn: '1 / span 2', gridRow: '1' }
-    : {
-        gridColumn: showVideoSidebar ? '1 / span 3' : '1 / span 2',
-        gridRow: '1',
-      };
+    : { gridColumn: `1 / span ${pcTotalCols}`, gridRow: '1' };
 
   const handSection = myPlayer ? (
     <section
@@ -577,6 +581,7 @@ export function GameView({
             deckCount={effectiveView.deckCount}
             flippingCardId={effectiveFlippingId ?? null}
             flippingPhase={multiFlippingPhase}
+            handPlacedCardId={currentHandCardId}
             isCompact={isCompact}
           />
           {/* 본인 누적 배수 + 고 횟수 — 게임판 좌측 하단 (사이드바 총점수와 같은 높이) */}
@@ -610,11 +615,25 @@ export function GameView({
           })()}
         </div>
 
-        {/* PC 우측 화상 사이드바 — col 3 row 2만 (게임판 영역, 점수판과 같은 행) */}
-        {showVideoSidebar && (
+        {/* PC 채팅 사이드 패널 — 화상 왼쪽 col, row 2 (게임판 영역) */}
+        {showChatSide && chatColIndex && (
           <div
             className="min-h-0"
-            style={{ gridColumn: '3', gridRow: '2' }}
+            style={{ gridColumn: String(chatColIndex), gridRow: '2' }}
+          >
+            <ChatSidePanel
+              width={chatWidth}
+              onWidthChange={setChatWidth}
+              onClose={() => setChatOpen(false)}
+            />
+          </div>
+        )}
+
+        {/* PC 우측 화상 사이드바 — 점수판과 같은 행, 채팅 우측 */}
+        {showVideoSidebar && videoColIndex && (
+          <div
+            className="min-h-0"
+            style={{ gridColumn: String(videoColIndex), gridRow: '2' }}
           >
             {videoSidebar}
           </div>
@@ -661,21 +680,24 @@ export function GameView({
         {/* 이모지 반응 — socket broadcast */}
         <EmojiReactions />
 
-        {/* 채팅 토글 버튼 — 우측 (이모지 버튼 아래) */}
-        <button
-          onClick={() => setChatOpen(true)}
-          className="pointer-events-auto fixed right-3 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-felt-700/60 bg-felt-950/90 text-xl shadow-lg backdrop-blur-sm transition hover:scale-110 hover:bg-felt-900 active:scale-95"
-          style={{ top: 'calc(50% + 56px)' }}
-          aria-label="채팅"
-          title="채팅"
-        >
-          💬
-          {chatUnread > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
-              {chatUnread > 9 ? '9+' : chatUnread}
-            </span>
-          )}
-        </button>
+        {/* 채팅 토글 버튼 — PC: 사이드 패널 토글 / 모바일: 모달.
+            PC에서 사이드 열려있으면 패널 안 닫기 버튼이 닫기 담당이라 버튼 숨김. */}
+        {(!showChatSide) && (
+          <button
+            onClick={() => setChatOpen(true)}
+            className="pointer-events-auto fixed right-3 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-felt-700/60 bg-felt-950/90 text-xl shadow-lg backdrop-blur-sm transition hover:scale-110 hover:bg-felt-900 active:scale-95"
+            style={{ top: 'calc(50% + 56px)' }}
+            aria-label="채팅"
+            title="채팅"
+          >
+            💬
+            {chatUnread > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
+                {chatUnread > 9 ? '9+' : chatUnread}
+              </span>
+            )}
+          </button>
+        )}
 
         {/* 설정 모달 */}
         <SettingsModal
@@ -712,8 +734,11 @@ export function GameView({
           onClose={() => setRulesOpen(false)}
         />
 
-        {/* 채팅 모달 */}
-        <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
+        {/* 채팅 모달 — 모바일에서만 사용. PC는 사이드 패널이 처리 */}
+        <ChatPanel
+          open={chatOpen && isCompact}
+          onClose={() => setChatOpen(false)}
+        />
 
         {/* 매칭 카드 종류 다른 2장일 때 사용자 선택 모달 (rules-final.md §1-6).
             Phase 1~3 진행 완료 (animationPhase==='idle') + 본인 turn 시 발화.

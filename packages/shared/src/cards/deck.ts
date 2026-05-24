@@ -134,3 +134,27 @@ export function createJokerCard(): Card {
 export function awardBombBonusCards(hand: readonly Card[]): Card[] {
   return [...hand, createBombCard(), createBombCard()];
 }
+
+let bonusPiSerial = 0;
+
+/**
+ * 보너스피 카드 생성 — 옵션 룰. 매칭 X, 점수판 직행 + 더미 1장 뒤집기.
+ * value=2: 투피 (피 2장 가치). value=3: 쓰리피 (피 3장 가치).
+ *
+ * 정통 한국 고스톱: 셔플에 포함되어 손패/바닥/더미 어디든 분배.
+ * 손에서 내면 점수판 직행. 더미에서 뒤집히면 점수판 + 추가 카드 뒤집기.
+ */
+export function createBonusPiCard(value: 2 | 3): Card {
+  bonusPiSerial += 1;
+  return {
+    id: `bonuspi-${value}-${bonusPiSerial}`,
+    month: 1,
+    kind: 'pi',
+    name: value === 2 ? '✌️ 투피' : '🤟 쓰리피',
+    isBonusPi: true,
+    bonusPiValue: value,
+    // isSsangPi=true로 표시해 기존 점수 로직(쌍피=피 2장)과 호환.
+    // 쓰리피는 calculateScore에서 +1 추가 가산.
+    isSsangPi: true,
+  };
+}

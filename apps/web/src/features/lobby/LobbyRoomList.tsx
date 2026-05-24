@@ -3,7 +3,7 @@ import type { RoomListItem } from '@gostop/shared';
 import { emitWithAck } from '../../lib/socket.ts';
 
 interface RoomListProps {
-  onJoinRoom: (room: RoomListItem) => void;
+  onJoinRoom: (room: RoomListItem, asSpectator?: boolean) => void;
   /** 6자리 ID로 입장 (방 목록에 없는 방, 또는 직접 ID 입력) */
   onJoinById: (id: string) => void;
 }
@@ -106,7 +106,7 @@ export function LobbyRoomList({ onJoinRoom, onJoinById }: RoomListProps) {
             <RoomCard
               key={room.id}
               room={room}
-              onJoin={() => onJoinRoom(room)}
+              onJoin={(asSpectator) => onJoinRoom(room, asSpectator)}
             />
           ))}
         </div>
@@ -120,19 +120,19 @@ function RoomCard({
   onJoin,
 }: {
   room: RoomListItem;
-  onJoin: () => void;
+  onJoin: (asSpectator: boolean) => void;
 }) {
   const isPlaying = room.phase !== 'waiting';
   const total = room.playerCount + room.spectatorCount;
   const max = room.maxPlayers;
   const isFull = total >= max;
-  const disabled = isPlaying || isFull;
+  const disabled = !isPlaying && (isFull);
 
   return (
     <div
       className={`rounded-lg border p-3 transition sm:p-4 ${
         isPlaying
-          ? 'border-green-800/30 bg-green-950/30 opacity-60'
+          ? 'border-rose-700/40 bg-green-950/40 hover:border-rose-500/60'
           : 'border-green-700/50 bg-green-950/50 hover:border-amber-600/50 hover:shadow-md hover:shadow-amber-500/10'
       }`}
     >
@@ -157,12 +157,20 @@ function RoomCard({
             </span>
           </div>
           {isPlaying ? (
-            <span className="rounded-md border border-rose-600/50 bg-rose-600/20 px-2 py-1 text-[10px] font-semibold text-rose-300 sm:text-xs">
-              게임중
-            </span>
+            <>
+              <span className="rounded-md border border-rose-600/50 bg-rose-600/20 px-2 py-1 text-[10px] font-semibold text-rose-300 sm:text-xs">
+                게임중
+              </span>
+              <button
+                onClick={() => onJoin(true)}
+                className="rounded-md bg-sky-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-sky-500 sm:px-4 sm:py-2 sm:text-xs"
+              >
+                👁 관전
+              </button>
+            </>
           ) : (
             <button
-              onClick={onJoin}
+              onClick={() => onJoin(false)}
               disabled={disabled}
               className="rounded-md bg-amber-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-amber-500 disabled:opacity-40 sm:px-4 sm:py-2 sm:text-xs"
             >

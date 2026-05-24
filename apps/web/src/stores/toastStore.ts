@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { reportError } from '../lib/errorReport.ts';
 
 export type ToastKind = 'info' | 'success' | 'warning' | 'error';
 
@@ -48,6 +49,9 @@ export const toast = {
     useToastStore.getState().push('success', text, duration),
   warning: (text: string, duration?: number) =>
     useToastStore.getState().push('warning', text, duration),
-  error: (text: string, duration?: number) =>
-    useToastStore.getState().push('error', text, duration),
+  error: (text: string, duration?: number) => {
+    useToastStore.getState().push('error', text, duration);
+    // 모든 toast.error를 server에 자동 보고 (dedup 3초)
+    reportError({ source: 'client:toast.error', message: text });
+  },
 };

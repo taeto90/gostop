@@ -22,6 +22,7 @@ export class InMemoryRoomStore implements RoomStore {
       gwangPaliVolunteers: [],
       gwangPaliAssignments: [],
       stuckOwners: {},
+      stuckBonusPis: {},
       nagariMultiplier: 1,
       chongtongUserId: null,
       rules: defaultRoomRules(),
