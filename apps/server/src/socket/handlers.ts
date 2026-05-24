@@ -297,6 +297,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
         return cb({ ok: false, error: op.error });
       }
 
+      socket.data.userId = userId;
       socket.data.roomId = room.id;
       socket.join(gameRoom(room.id));
       socket.join(userRoom(userId));
@@ -341,6 +342,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
 
       if (!op.ok) return cb({ ok: false, error: op.error });
 
+      socket.data.userId = userId;
       socket.data.roomId = roomId;
       socket.join(gameRoom(roomId));
       socket.join(userRoom(userId));
@@ -365,6 +367,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
       if (!evict.ok) return cb({ ok: false, error: evict.error });
 
       setMemberConnected(room, userId, true);
+      socket.data.userId = userId;
       socket.data.roomId = roomId;
       socket.join(gameRoom(roomId));
       socket.join(userRoom(userId));
