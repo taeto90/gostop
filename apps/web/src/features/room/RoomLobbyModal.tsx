@@ -205,6 +205,8 @@ export function RoomLobbyModal({ view }: RoomLobbyModalProps) {
               {gwangPaliCount > 0 && (
                 <GwangPaliSection
                   count={gwangPaliCount}
+                  volunteerCount={volunteers.length}
+                  assignedCount={(view.gwangPaliAssignments ?? []).length}
                   amVolunteer={amVolunteer}
                   onToggleVolunteer={() => void toggleVolunteer()}
                 />
@@ -864,30 +866,44 @@ function MediaModeBadge({ mode }: { mode: 'video' | 'voice-only' }) {
 
 function GwangPaliSection({
   count,
+  volunteerCount,
+  assignedCount,
   amVolunteer,
   onToggleVolunteer,
 }: {
   count: number;
+  volunteerCount: number;
+  assignedCount: number;
   amVolunteer: boolean;
   onToggleVolunteer: () => void;
 }) {
+  const filled = assignedCount + volunteerCount;
   return (
-    <section className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
-      <div className="mb-1.5">
-        🎴 <b>광팔이 모드</b> — 시작 시 {count}명이 빠집니다.
+    <section className="rounded-lg border-2 border-amber-500/50 bg-gradient-to-b from-amber-500/15 to-amber-900/20 p-3 text-xs text-amber-200">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-bold text-amber-300">🎴 광팔이 모드</span>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+          filled >= count
+            ? 'bg-green-500/30 text-green-300'
+            : 'bg-amber-500/30 text-amber-200'
+        }`}>
+          {filled}/{count}명
+        </span>
       </div>
-      <div className="text-[11px] text-amber-300/80">
+      <div className="mb-2 text-[11px] text-amber-300/80">
+        시작 시 {count}명이 관전자로 빠집니다.
+        <br />
         자원자 → 호스트 지정 → 마지막 입장자 자동 순.
       </div>
       <button
         onClick={onToggleVolunteer}
-        className={`mt-2 w-full rounded border px-3 py-1.5 text-xs font-bold transition ${
+        className={`w-full rounded-lg border px-3 py-2 text-xs font-bold transition ${
           amVolunteer
-            ? 'border-amber-400 bg-amber-500/30 text-amber-100'
-            : 'border-amber-500/40 bg-amber-950/40 text-amber-200 hover:bg-amber-900/50'
+            ? 'border-amber-400 bg-amber-500/30 text-amber-100 shadow-inner'
+            : 'border-amber-500/40 bg-amber-950/40 text-amber-200 hover:border-amber-400 hover:bg-amber-900/50'
         }`}
       >
-        {amVolunteer ? '✓ 광팔이 자원함 (취소)' : '나는 광팔이로 빠지기'}
+        {amVolunteer ? '✓ 광팔이 자원함 (취소하려면 클릭)' : '🙋 나는 광팔이로 빠지기'}
       </button>
     </section>
   );

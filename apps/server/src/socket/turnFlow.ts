@@ -13,7 +13,7 @@ import {
   stealPiFromOpponents,
   stealPiOneFromEachOpponent,
 } from './gameLogic.ts';
-import { progressAITurnIfAny } from './aiTurn.ts';
+import { progressAITurnIfAny, shouldAIGo } from './aiTurn.ts';
 import { appendGameLog, captureCounts, endGameLog, logPlayCard } from './gameLog.ts';
 
 interface PlayCardOpts {
@@ -253,10 +253,8 @@ function autoDecideGoStopForAI(
     const player = findPlayer(room, playerId);
     if (!player) return;
 
-    const handCount = player.hand.length;
-    const goCount = player.goCount;
-    // 단순 정책 — 손패 4장 이상 + 2고 이하면 go, 그 외엔 stop
-    const willGo = handCount >= 4 && goCount < 2;
+    const difficulty = room.aiBotDifficulties?.[playerId] ?? 'medium';
+    const willGo = shouldAIGo(player, room, difficulty as 'easy' | 'medium' | 'hard');
 
     if (willGo) {
       applyGo(io, room, store, playerId);

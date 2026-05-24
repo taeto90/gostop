@@ -7,6 +7,8 @@ import { useMultiPlayCard } from '../../hooks/useMultiPlayCard.ts';
 import { useMultiSpecialsTrigger } from '../../hooks/useMultiSpecialsTrigger.ts';
 import { useMultiTurnSequence } from '../../hooks/useMultiTurnSequence.ts';
 import { useShakeBombFireTrigger } from '../../hooks/useShakeBombFireTrigger.ts';
+import { useWakeLock } from '../../hooks/useWakeLock.ts';
+import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts.ts';
 import { useChongtongFireTrigger } from '../../hooks/useChongtongFireTrigger.ts';
 import { toast } from '../../stores/toastStore.ts';
 import type { PresetId, RoomView } from '@gostop/shared';
@@ -81,6 +83,8 @@ export function GameView({
   mediaSettings,
   onEndedReady,
 }: GameViewProps) {
+  useWakeLock(view.phase === 'playing');
+
   // 멀티 모드: 본인 카드 클릭 시 잠시 확대 효과 (Phase 1 부분 적용).
   // 솔로(SoloPlay)는 props로 명시 전달, 멀티는 클라 단독으로 짧게 표시.
   const [localPeakingId, setLocalPeakingId] = useState<string | null>(null);
@@ -166,6 +170,14 @@ export function GameView({
   const effectiveView = displayView;
   const myPlayer = effectiveView.players.find((p) => p.userId === effectiveView.myUserId);
   const isMyTurn = effectiveView.turnUserId === effectiveView.myUserId;
+
+  // 턴이 넘어가면 흔들기/폭탄 모달 자동 dismiss (server timer race 방지)
+  useEffect(() => {
+    if (!isMyTurn) {
+      setPendingShake(null);
+      setPendingBomb(null);
+    }
+  }, [isMyTurn]);
 
   const effectiveFlippingId = flippingCardId ?? multiFlippingId;
   const effectivePeakingId = peakingFromProps ?? localPeakingId ?? multiPeekingId;
@@ -304,6 +316,25 @@ export function GameView({
   function onBombCancel() {
     setPendingBomb(null);
   }
+
+  // 키보드 단축키 (1~9: 손패, G: 고, S: 스톱, C: 채팅)
+  const goStopOpen =
+    view.pendingGoStop?.playerId === view.myUserId && animationPhase === 'idle';
+  useKeyboardShortcuts({
+    enabled: view.phase === 'playing',
+    onSelectCard: (idx) => {
+      const hand = myPlayer?.hand;
+      if (!hand || !isMyTurn || idx >= hand.length) return;
+      handlePlayCardWithPeek(hand[idx]!.id);
+    },
+    onGo: goStopOpen
+      ? () => void emitWithAck('game:action', { type: 'declare-go' })
+      : undefined,
+    onStop: goStopOpen
+      ? () => void emitWithAck('game:action', { type: 'declare-stop' })
+      : undefined,
+    onToggleChat: () => setChatOpen((prev) => !prev),
+  });
 
   // broadcast 도착으로 Phase 1-A peak 시작되면 localPeakingId clear — peak 효과는
   // multiPeekingId에서 이어받음. 사용자 시각에는 클릭 즉시 확대 → 비행까지 한 번만 확대.

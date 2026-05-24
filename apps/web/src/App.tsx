@@ -9,13 +9,14 @@ import { EventOverlay } from './components/EventOverlay.tsx';
 import { InstallPwaBanner } from './components/InstallPwaBanner.tsx';
 import { ToastContainer } from './components/ToastContainer.tsx';
 import { tryLockLandscape } from './lib/pwa.ts';
-import { connectWithAuth, updateSocketToken, disconnectSocket } from './lib/socket.ts';
+import { connectSocket, updateSocketToken, disconnectSocket } from './lib/socket.ts';
 import { LoginPage } from './features/auth/LoginPage.tsx';
 import { ProfileSetupPage } from './features/auth/ProfileSetupPage.tsx';
 import { Lobby } from './features/lobby/Lobby.tsx';
 import { ResultDemoView } from './features/room/ResultDemoView.tsx';
 import { RoomScreen } from './features/room/RoomScreen.tsx';
 import { RuleTestPage } from './features/rule-test/RuleTestPage.tsx';
+import { AdminPage } from './features/admin/AdminPage.tsx';
 
 // 앱 로드 시 1회 — Supabase 세션 복원
 initAuth();
@@ -41,11 +42,14 @@ export default function App() {
     }
   }, [user, dbProfile]);
 
-  // 세션 변화 시 소켓 토큰 갱신 + 연결
+  // 토큰 갱신은 세션 변화 즉시 (재연결 시 최신 토큰 사용)
   useEffect(() => {
-    if (!session?.access_token || !dbProfile) return;
-    updateSocketToken(session.access_token);
-    void connectWithAuth();
+    if (session?.access_token) updateSocketToken(session.access_token);
+  }, [session?.access_token]);
+
+  // 소켓 연결은 프로필 준비 후
+  useEffect(() => {
+    if (session?.access_token && dbProfile) connectSocket();
   }, [session?.access_token, dbProfile]);
 
   useRoomSocket();
@@ -100,6 +104,7 @@ export default function App() {
           <Route path="/room/:id" element={<RoomScreen />} />
           <Route path="/result-demo" element={<ResultDemoView />} />
           <Route path="/rule-test" element={<RuleTestPage />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Routes>
         <EventOverlay />
         <ToastContainer />

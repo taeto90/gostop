@@ -193,6 +193,21 @@ function ChatBody({
  * - 모달 열릴 때 unreadCount 리셋
  */
 export function ChatPanel({ open, onClose }: ChatPanelProps) {
+  const [vvHeight, setVvHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!open || !window.visualViewport) return;
+    function onResize() {
+      const vv = window.visualViewport!;
+      setVvHeight(vv.height);
+    }
+    onResize();
+    window.visualViewport.addEventListener('resize', onResize);
+    return () => window.visualViewport?.removeEventListener('resize', onResize);
+  }, [open]);
+
+  const maxH = vvHeight ? `${vvHeight - 24}px` : '600px';
+
   return (
     <AnimatePresence>
       {open && (
@@ -201,7 +216,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-3 backdrop-blur-sm sm:items-center"
           onClick={onClose}
         >
           <motion.div
@@ -209,7 +224,8 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
             animate={MODAL_SCALE_ANIMATE}
             exit={MODAL_SCALE_EXIT}
             transition={MODAL_SPRING}
-            className="h-full max-h-[600px] w-full max-w-md rounded-2xl border-2 border-amber-400/40 bg-felt-900 shadow-2xl"
+            className="w-full max-w-md rounded-2xl border-2 border-amber-400/40 bg-felt-900 shadow-2xl"
+            style={{ maxHeight: maxH }}
             onClick={(e) => e.stopPropagation()}
           >
             <ChatBody active={open} onClose={onClose} className="h-full" />

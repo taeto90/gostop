@@ -285,6 +285,19 @@ export function logPlayCard(
     stealCheck,
     stealValid,
   });
+
+  // dev only — 검증 이상 시 즉시 경고
+  if (FILE_ENABLED) {
+    if (!orderValid) {
+      console.warn(`[gameLog] TURN ORDER INVALID: expected=${expectedNext} actual=${actualNext} room=${room.id}`);
+    }
+    if (dup.duplicates.length > 0) {
+      console.warn(`[gameLog] CARD DUPLICATES: ${dup.duplicates.join(',')} room=${room.id}`);
+    }
+    if (!stealValid) {
+      console.warn(`[gameLog] STEAL INVALID: room=${room.id}`, stealCheck);
+    }
+  }
 }
 
 /** 게임 종료 — final summary + 닫힘. DB는 batch insert */

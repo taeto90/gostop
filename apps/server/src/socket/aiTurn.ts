@@ -6,12 +6,13 @@
  * - room이 살아있고 phase === 'playing'일 때만 동작
  */
 
-import type { Room } from '@gostop/shared';
+import type { Player, Room } from '@gostop/shared';
 import {
   awardBombBonusCards,
   calculateScore,
   chooseAiCard,
   executeTurn,
+  findMatches,
 } from '@gostop/shared';
 
 import type { RoomStore } from '../rooms/RoomStore.ts';
@@ -26,6 +27,55 @@ import { captureCounts, endGameLog, logPlayCard } from './gameLog.ts';
  * 클라 4-phase 시퀀스(약 2초)가 끝난 후 다음 broadcast가 도착하도록 설정.
  * 환경변수 `AI_TURN_DELAY_MS`로 override 가능.
  */
+/**
+ * AI go/stop 결정 — 난이도별 전략.
+ * - easy: 항상 STOP
+ * - medium: 손패 4+ & goCount < 2 & 매칭 가능 카드 있으면 GO
+ * - hard: 상대 점수 고려 + 적극적 GO (박 노림)
+ */
+export function shouldAIGo(
+  player: Player,
+  room: Room,
+  difficulty: 'easy' | 'medium' | 'hard',
+): boolean {
+  const hand = player.hand;
+  const goCount = player.goCount;
+
+  if (difficulty === 'easy') return false;
+
+  if (hand.length < 2) return false;
+
+  const field = room.game?.field ?? [];
+  const matchableCount = hand.filter(
+    (c) => !c.isBomb && !c.isJoker && !c.isBonusPi && findMatches(field, c).length > 0,
+  ).length;
+
+  if (difficulty === 'medium') {
+    return hand.length >= 4 && goCount < 2 && matchableCount >= 2;
+  }
+
+  // hard — 상대 최고 점수 확인, 박 가능성 있으면 적극적 GO
+  const opponents = room.players.filter((p) => p.id !== player.id);
+  const maxOpponentScore = Math.max(
+    ...opponents.map((p) =>
+      calculateScore(p.collected, {
+        nineYeolAsSsangPi: p.flags.nineYeolAsSsangPi ?? false,
+        allowGukJoon: room.rules.allowGukJoon,
+      }).total,
+    ),
+    0,
+  );
+  const myScore = calculateScore(player.collected, {
+    nineYeolAsSsangPi: player.flags.nineYeolAsSsangPi ?? false,
+    allowGukJoon: room.rules.allowGukJoon,
+  }).total;
+
+  if (goCount >= 3) return false;
+  if (hand.length >= 3 && matchableCount >= 1 && myScore > maxOpponentScore) return true;
+  if (hand.length >= 4 && goCount < 2) return true;
+  return false;
+}
+
 const AI_TURN_DELAY_MS =
   Number(process.env.AI_TURN_DELAY_MS) > 0
     ? Number(process.env.AI_TURN_DELAY_MS)
@@ -159,8 +209,8 @@ export function progressAITurnIfAny(io: IO, room: Room, store: RoomStore): void 
           prevCounts.hands,
           prevCounts.pis,
         );
-        // AI: 단순 정책 — 손패 4장+ & 2고 이하면 go, 그 외 stop
-        const willGo = ai.hand.length >= 4 && ai.goCount < 2;
+        const aiDifficulty = room.aiBotDifficulties?.[turnPlayerId] ?? 'medium';
+        const willGo = shouldAIGo(ai, room, aiDifficulty as 'easy' | 'medium' | 'hard');
         if (willGo) {
           applyGo(io, room, store, turnPlayerId);
         } else {

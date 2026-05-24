@@ -164,11 +164,11 @@ export function ResultView({
               {top.final.flags.chongtong && (
                 <FlagBadge color="amber">👑 총통</FlagBadge>
               )}
-              {top.final.flags.pibak && <FlagBadge color="rose">피박 ×2</FlagBadge>}
-              {top.final.flags.gwangbak && <FlagBadge color="amber">광박 ×2</FlagBadge>}
-              {top.final.flags.myungbak && <FlagBadge color="sky">멍박 ×2</FlagBadge>}
+              {top.final.flags.pibak && <FlagBadge color="rose" pulse>피박 ×2</FlagBadge>}
+              {top.final.flags.gwangbak && <FlagBadge color="amber" pulse>광박 ×2</FlagBadge>}
+              {top.final.flags.myungbak && <FlagBadge color="sky" pulse>멍박 ×2</FlagBadge>}
               {top.final.flags.myungttadak && (
-                <FlagBadge color="sky">멍따 ×2</FlagBadge>
+                <FlagBadge color="sky" pulse>멍따 ×2</FlagBadge>
               )}
               {top.final.flags.goCount >= 3 && (
                 <FlagBadge color="rose">

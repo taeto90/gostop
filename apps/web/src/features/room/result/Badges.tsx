@@ -24,17 +24,19 @@ export function Badge({
 export function FlagBadge({
   color,
   children,
+  pulse = false,
 }: {
   color: 'amber' | 'sky' | 'rose';
   children: React.ReactNode;
+  pulse?: boolean;
 }) {
   const colors = {
-    amber: 'bg-amber-500/40 text-amber-100 border-amber-400',
-    sky: 'bg-sky-500/40 text-sky-100 border-sky-400',
-    rose: 'bg-rose-500/40 text-rose-100 border-rose-400',
+    amber: 'bg-amber-500/40 text-amber-100 border-amber-400 shadow-amber-500/30',
+    sky: 'bg-sky-500/40 text-sky-100 border-sky-400 shadow-sky-500/30',
+    rose: 'bg-rose-500/40 text-rose-100 border-rose-400 shadow-rose-500/30',
   };
   return (
-    <span className={`rounded border px-2 py-0.5 font-bold shadow-sm ${colors[color]}`}>
+    <span className={`rounded border px-2 py-0.5 font-bold shadow-md ${colors[color]} ${pulse ? 'animate-pulse' : ''}`}>
       {children}
     </span>
   );

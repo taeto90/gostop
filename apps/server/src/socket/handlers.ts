@@ -52,9 +52,28 @@ type IOSocket = Socket<
   SocketData
 >;
 
+// per-socket rate limiter — event별 최근 호출 시각 배열을 유지
+function createRateLimiter() {
+  const buckets = new Map<string, number[]>();
+  return function check(event: string, maxCalls: number, windowMs: number): boolean {
+    const now = Date.now();
+    let times = buckets.get(event);
+    if (!times) {
+      times = [];
+      buckets.set(event, times);
+    }
+    // 윈도우 밖 항목 제거
+    while (times.length > 0 && times[0]! < now - windowMs) times.shift();
+    if (times.length >= maxCalls) return false;
+    times.push(now);
+    return true;
+  };
+}
+
 export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
   io.on('connection', (socket: IOSocket) => {
     console.log(`[socket] connected: ${socket.id}`);
+    const rateLimit = createRateLimiter();
 
     socket.on('ping:check', (cb) => cb({ time: Date.now() }));
 
@@ -121,6 +140,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
 
     // ============================== chat:send ==============================
     socket.on('chat:send', (payload, cb) => {
+      if (!rateLimit('chat:send', 5, 1000)) return cb({ ok: false, error: '너무 빠릅니다' });
       const { userId, roomId } = socket.data;
       if (!userId || !roomId) return cb({ ok: false, error: '방에 입장하지 않음' });
 
@@ -214,6 +234,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
 
     // ============================== reaction:send ==============================
     socket.on('reaction:send', (payload, cb) => {
+      if (!rateLimit('reaction:send', 5, 2000)) return cb({ ok: false, error: '너무 빠릅니다' });
       const { userId, roomId } = socket.data;
       if (!userId || !roomId) return cb({ ok: false, error: '방에 입장하지 않음' });
       // 간단한 이모지 길이 검증
@@ -251,6 +272,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
 
     // ============================== room:create ==============================
     socket.on('room:create', (payload, cb) => {
+      if (!rateLimit('room:create', 5, 60000)) return cb({ ok: false, error: '방 생성이 너무 빠릅니다' });
       const parsed = RoomCreateSchema.safeParse(payload);
       if (!parsed.success) return cb({ ok: false, error: '입력 검증 실패' });
       const { nickname, emojiAvatar, asSpectator, password, mediaMode } = parsed.data;
@@ -338,7 +360,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
       if (!room) return cb({ ok: false, error: '존재하지 않는 방입니다' });
       if (!isMember(room, userId)) return cb({ ok: false, error: '방의 멤버가 아닙니다' });
 
-      // 한 사용자 한 방 — 다른 방의 멸버면 정리 (게임 중이면 거부)
+      // 한 사용자 한 방 — 다른 방의 멤버면 정리 (게임 중이면 거부)
       const evict = evictUserFromOtherRooms(userId, roomId);
       if (!evict.ok) return cb({ ok: false, error: evict.error });
 
@@ -920,6 +942,7 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
 
     // ============================== game:action ==============================
     socket.on('game:action', (payload, cb) => {
+      if (!rateLimit('game:action', 10, 1000)) return cb({ ok: false, error: '너무 빠릅니다' });
       const { userId, roomId } = socket.data;
       const fail = (error: string, context?: Record<string, unknown>) => {
         logServerError({

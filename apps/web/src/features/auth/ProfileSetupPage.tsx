@@ -20,7 +20,7 @@ export function ProfileSetupPage() {
     if (!isValid || !user) return;
 
     setBusy(true);
-    const profile = await upsertDbProfile(user.id, trimmed, emoji);
+    const profile = await upsertDbProfile(user.id, trimmed, emoji, user.email ?? undefined);
     setBusy(false);
 
     if (!profile) {
