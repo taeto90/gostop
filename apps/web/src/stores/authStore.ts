@@ -13,7 +13,6 @@ interface AuthState {
   user: User | null;
   dbProfile: DbProfile | null;
   loading: boolean;
-  /** 초기 세션 복원 완료 여부 */
   initialized: boolean;
 
   setSession: (session: Session | null) => void;
@@ -79,43 +78,65 @@ export async function upsertDbProfile(
   return data as DbProfile;
 }
 
-/** 앱 시작 시 1회 호출 — Supabase 세션 복원 + onAuthStateChange 리스너 등록 */
+/** URL hash에서 access_token + refresh_token 파싱 */
+function parseHashTokens(): { access_token: string; refresh_token: string } | null {
+  const hash = window.location.hash.substring(1);
+  if (!hash) return null;
+  const params = new URLSearchParams(hash);
+  const access_token = params.get('access_token');
+  const refresh_token = params.get('refresh_token');
+  if (!access_token || !refresh_token) return null;
+  return { access_token, refresh_token };
+}
+
+async function handleSession(session: Session | null): Promise<void> {
+  const store = useAuthStore.getState();
+  store.setSession(session);
+  if (session?.user) {
+    const profile = await fetchDbProfile(session.user.id);
+    console.log('[auth] dbProfile:', profile ? profile.nickname : 'null');
+    store.setDbProfile(profile);
+  } else {
+    store.setDbProfile(null);
+  }
+  if (!useAuthStore.getState().initialized) {
+    store.setInitialized();
+  }
+}
+
 export function initAuth(): void {
   console.log('[auth] initAuth called, supabase:', supabase ? 'OK' : 'NULL');
-  console.log('[auth] URL hash:', window.location.hash.slice(0, 50) + '...');
 
   if (!supabase) {
-    console.warn('[auth] supabase is null — skipping auth init');
     useAuthStore.getState().setInitialized();
     return;
   }
 
-  // onAuthStateChange를 먼저 등록 — hash fragment 처리 결과를 받기 위해
+  // 이벤트 리스너 등록
   supabase.auth.onAuthStateChange((event, session) => {
-    console.log('[auth] onAuthStateChange:', event, 'session:', session ? `user=${session.user.id}` : 'null');
-    useAuthStore.getState().setSession(session);
-    if (session?.user) {
-      void fetchDbProfile(session.user.id).then((profile) => {
-        console.log('[auth] dbProfile loaded:', profile ? profile.nickname : 'null');
-        useAuthStore.getState().setDbProfile(profile);
-        // INITIAL_SESSION 또는 SIGNED_IN에서 initialized 설정
-        if (!useAuthStore.getState().initialized) {
-          useAuthStore.getState().setInitialized();
-        }
-      });
-    } else {
-      useAuthStore.getState().setDbProfile(null);
-      if (!useAuthStore.getState().initialized) {
-        useAuthStore.getState().setInitialized();
-      }
-    }
+    console.log('[auth] onAuthStateChange:', event);
+    void handleSession(session);
   });
 
-  // fallback — onAuthStateChange가 5초 내 initialized 안 하면 강제 설정
-  setTimeout(() => {
-    if (!useAuthStore.getState().initialized) {
-      console.warn('[auth] timeout — forcing initialized');
-      useAuthStore.getState().setInitialized();
-    }
-  }, 5000);
+  // OAuth 리다이렉트 후 — URL hash에서 토큰 직접 파싱 + setSession
+  const tokens = parseHashTokens();
+  if (tokens) {
+    console.log('[auth] found tokens in URL hash, setting session manually');
+    window.history.replaceState(null, '', window.location.pathname);
+    supabase.auth.setSession(tokens).then(({ data, error }) => {
+      if (error) {
+        console.error('[auth] setSession failed:', error.message);
+      } else {
+        console.log('[auth] setSession OK, user:', data.session?.user.id);
+      }
+      void handleSession(data.session);
+    });
+    return;
+  }
+
+  // 기존 세션 복원 시도
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    console.log('[auth] getSession:', session ? `user=${session.user.id}` : 'null');
+    void handleSession(session);
+  });
 }

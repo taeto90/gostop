@@ -7,8 +7,8 @@ export const supabase: SupabaseClient | null =
   URL && KEY
     ? createClient(URL, KEY, {
         auth: {
-          flowType: 'pkce',
-          detectSessionInUrl: true,
+          flowType: 'implicit',
+          detectSessionInUrl: false,
         },
       })
     : null;
