@@ -4,7 +4,14 @@ const URL = import.meta.env.VITE_SUPABASE_URL;
 const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const supabase: SupabaseClient | null =
-  URL && KEY ? createClient(URL, KEY) : null;
+  URL && KEY
+    ? createClient(URL, KEY, {
+        auth: {
+          flowType: 'implicit',
+          detectSessionInUrl: true,
+        },
+      })
+    : null;
 
 export const supabaseEnabled = supabase !== null;
 
