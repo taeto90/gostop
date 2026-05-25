@@ -1,13 +1,5 @@
-import type { PlayerStateView } from '@gostop/shared';
+import { calculateScore, type PlayerStateView } from '@gostop/shared';
 
-/**
- * 게임 진행 중 누적 배수 계산 — `packages/shared/src/scoring/multipliers.ts`와 동일 공식.
- *
- * 박(피박/광박/멍박)은 종료 시점 결정이라 게임 중 누적 X (결과 화면에서 처리).
- *   - 흔들기: 각 ×2 누적
- *   - 폭탄: 배수 X (rules-final.md §4 — 2026-05-17 개정). 보너스 카드 + 피 빼앗기만 효과
- *   - 고: 1·2고 ×1, 3고 ×2, 4고 ×4, 5고 ×8 ... (2^(goCount-2))
- */
 export function computeMultiplier(p: PlayerStateView | undefined): number {
   if (!p) return 1;
   const shake = p.flags?.shookMonths?.length ?? 0;
@@ -16,9 +8,39 @@ export function computeMultiplier(p: PlayerStateView | undefined): number {
   return Math.max(1, 2 ** shake * goMul);
 }
 
-/** 배수 hover tooltip 분해 텍스트 */
 export function multiplierBreakdown(p: PlayerStateView | undefined): string {
-  const shake = p?.flags?.shookMonths?.length ?? 0;
-  const goN = p?.goCount ?? 0;
-  return `흔들기 ${shake} × 고 ${goN}`;
+  if (!p) return '';
+  const shake = p.flags?.shookMonths?.length ?? 0;
+  const goN = p.goCount ?? 0;
+  const parts: string[] = [];
+  if (shake > 0) {
+    const months = (p.flags?.shookMonths as number[]).join(',');
+    parts.push(`흔들기 ${months}월 (×${2 ** shake})`);
+  }
+  if (goN >= 3) parts.push(`${goN}고 (×${2 ** (goN - 2)})`);
+  else if (goN > 0) parts.push(`${goN}고`);
+  return parts.length > 0 ? parts.join(' · ') : '';
+}
+
+export function scoreBreakdown(
+  p: PlayerStateView | undefined,
+  allowGukJoon = true,
+): string {
+  if (!p) return '';
+  const s = calculateScore(p.collected, {
+    nineYeolAsSsangPi: p.flags?.nineYeolAsSsangPi ?? false,
+    allowGukJoon,
+  });
+  const parts: string[] = [];
+  if (s.gwang > 0) parts.push(`광 ${s.gwang}점`);
+  if (s.godori > 0) parts.push(`고도리 ${s.godori}점`);
+  if (s.yeol > 0) parts.push(`끗 ${s.yeol}점`);
+  if (s.ddi > 0) parts.push(`띠 ${s.ddi}점`);
+  if (s.dan > 0) parts.push(`단 ${s.dan}점`);
+  if (s.pi > 0) parts.push(`피 ${s.pi}점`);
+
+  const mul = computeMultiplier(p);
+  const mulText = multiplierBreakdown(p);
+  if (mul > 1 && mulText) parts.push(`배수: ${mulText}`);
+  return parts.length > 0 ? parts.join('\n') : '아직 판에 없음';
 }

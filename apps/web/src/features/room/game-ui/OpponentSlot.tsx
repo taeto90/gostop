@@ -7,7 +7,7 @@ import { Card } from '../../../components/Card.tsx';
 import { CollectedStrip } from '../../../components/CollectedStrip.tsx';
 import { TurnIndicator } from '../../../components/TurnIndicator.tsx';
 import { useElementSize } from '../../../hooks/useElementSize.ts';
-import { computeMultiplier, multiplierBreakdown } from '../../../lib/multiplierUtils.ts';
+import { computeMultiplier, multiplierBreakdown, scoreBreakdown } from '../../../lib/multiplierUtils.ts';
 
 /**
  * phase='waiting'에서 호스트가 다른 player slot 클릭 시 나오는 메뉴 액션.
@@ -187,7 +187,10 @@ export function OpponentSlot({
 
       {/* 점수(왼쪽) + 딴패(오른쪽) — 한 줄로 배치. 비어 있어도 공간 미리 확보. */}
       <div className="flex min-h-[56px] flex-1 items-center gap-2 border-t border-felt-900/60 pt-1">
-        <div className="flex shrink-0 flex-col items-center justify-center rounded-lg border border-amber-400/30 bg-felt-950/60 px-2 py-1">
+        <div
+          title={scoreBreakdown(player, allowGukJoon)}
+          className="flex shrink-0 cursor-help flex-col items-center justify-center rounded-lg border border-amber-400/30 bg-felt-950/60 px-2 py-1"
+        >
           <div className="flex items-baseline gap-0.5">
             <AnimatedNumber
               value={score.total}

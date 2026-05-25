@@ -12,6 +12,7 @@ import { GameView } from './GameView.tsx';
 import { ResultView } from './ResultView.tsx';
 import { RoomLobbyModal } from './RoomLobbyModal.tsx';
 import { useEndedSnapshot } from './useEndedSnapshot.ts';
+import { PasswordPromptModal } from '../lobby/PasswordPromptModal.tsx';
 import { toast } from '../../stores/toastStore.ts';
 
 /**
@@ -33,6 +34,9 @@ export function RoomScreen() {
   const navigate = useNavigate();
   const [joinError, setJoinError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [pwErr, setPwErr] = useState<string | null>(null);
+  const [pwBusy, setPwBusy] = useState(false);
   // ResultView 라이프사이클 (snapshot freeze + 5초 자동 dismiss + 비호스트 명시적 dismiss)
   const ended = useEndedSnapshot(view);
 
@@ -77,7 +81,11 @@ export function RoomScreen() {
         asSpectator: true,
       });
       if (!joinSpec.ok) {
-        setJoinError(joinSpec.error);
+        if (joinSpec.error.includes('비밀')) {
+          setNeedsPassword(true);
+        } else {
+          setJoinError(joinSpec.error);
+        }
       }
     })();
   }, [id, profile, view?.roomId, tried, navigate]);
@@ -98,6 +106,38 @@ export function RoomScreen() {
 
   if (!profile) return null;
   if (!id) return <Navigate to="/" replace />;
+
+  if (needsPassword && profile && id) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-950 via-green-900 to-emerald-950">
+        <PasswordPromptModal
+          open
+          hostNickname=""
+          busy={pwBusy}
+          err={pwErr}
+          onClose={() => navigate('/')}
+          onSubmit={async (pw) => {
+            setPwBusy(true);
+            setPwErr(null);
+            const r = await emitWithAck('room:join', {
+              userId: profile.userId,
+              roomId: id,
+              nickname: profile.nickname,
+              emojiAvatar: profile.emojiAvatar,
+              asSpectator: false,
+              password: pw,
+            });
+            setPwBusy(false);
+            if (r.ok) {
+              setNeedsPassword(false);
+            } else {
+              setPwErr(r.error);
+            }
+          }}
+        />
+      </div>
+    );
+  }
 
   if (joinError) {
     return (

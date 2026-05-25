@@ -71,9 +71,22 @@ function createRateLimiter() {
 }
 
 export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
-  io.on('connection', (socket: IOSocket) => {
+  io.on('connection', async (socket: IOSocket) => {
     console.log(`[socket] connected: ${socket.id}`);
     const rateLimit = createRateLimiter();
+
+    // 다중 로그인 차단 — 같은 userId의 기존 소켓 강제 disconnect
+    if (socket.data.userId) {
+      const uid = socket.data.userId;
+      const existing = await io.in(userRoom(uid)).fetchSockets();
+      for (const old of existing) {
+        if (old.id !== socket.id) {
+          old.emit('error', { message: '다른 기기에서 로그인하여 연결이 종료되었습니다' });
+          old.disconnect(true);
+        }
+      }
+      socket.join(userRoom(uid));
+    }
 
     socket.on('ping:check', (cb) => cb({ time: Date.now() }));
 
@@ -880,14 +893,15 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
       if (room.hostId !== userId) {
         return cb({ ok: false, error: '호스트만 룰 변경 가능' });
       }
-      if (room.phase === 'playing') {
-        return cb({ ok: false, error: '게임 진행 중에는 룰을 변경할 수 없습니다' });
-      }
-
       const parsed = UpdateRulesSchema.safeParse(payload);
       if (!parsed.success) return cb({ ok: false, error: '입력 검증 실패' });
 
-      // 실제로 변경된 키만 추려서 broadcast (toast 노이즈 방지)
+      // 게임 중에는 비밀번호만 변경 가능 (룰 변경은 차단)
+      const hasRuleChanges = Object.values(parsed.data.rules).some((v) => v !== undefined);
+      if (room.phase === 'playing' && hasRuleChanges) {
+        return cb({ ok: false, error: '게임 진행 중에는 룰을 변경할 수 없습니다' });
+      }
+
       const changes: Partial<typeof room.rules> = {};
       for (const [k, v] of Object.entries(parsed.data.rules)) {
         if (v === undefined) continue;
