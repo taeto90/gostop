@@ -7,7 +7,7 @@ import { Card } from '../../../components/Card.tsx';
 import { CollectedStrip } from '../../../components/CollectedStrip.tsx';
 import { TurnIndicator } from '../../../components/TurnIndicator.tsx';
 import { useElementSize } from '../../../hooks/useElementSize.ts';
-import { computeMultiplier, multiplierBreakdown } from '../../../lib/multiplierUtils.ts';
+import { computeMultiplier } from '../../../lib/multiplierUtils.ts';
 
 /**
  * phase='waiting'에서 호스트가 다른 player slot 클릭 시 나오는 메뉴 액션.
@@ -204,7 +204,6 @@ export function OpponentSlot({
             const m = computeMultiplier(player);
             return m > 1 ? (
               <span
-                title={multiplierBreakdown(player)}
                 className="rounded bg-amber-500/40 px-1 text-[10px] font-black text-amber-100"
               >
                 ×{m}

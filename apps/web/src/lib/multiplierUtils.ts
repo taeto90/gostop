@@ -14,7 +14,7 @@ export function multiplierBreakdown(p: PlayerStateView | undefined): string {
   const goN = p.goCount ?? 0;
   const parts: string[] = [];
   if (shake > 0) {
-    const months = (p.flags?.shookMonths as number[]).join(',');
+    const months = ((p.flags?.shookMonths ?? []) as number[]).join(',');
     parts.push(`흔들기 ${months}월 (×${2 ** shake})`);
   }
   if (goN >= 3) parts.push(`${goN}고 (×${2 ** (goN - 2)})`);

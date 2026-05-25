@@ -26,6 +26,7 @@ import { isCompactWidth } from '../../lib/layoutConstants.ts';
 import { AISetupModal } from './AISetupModal.tsx';
 import { RoomRulesModal } from './RoomRulesModal.tsx';
 import { LobbyMemberCard } from './LobbyMemberCard.tsx';
+import { PasswordToggle } from '../../components/PasswordToggle.tsx';
 
 interface RoomLobbyModalProps {
   view: RoomView;
@@ -858,36 +859,6 @@ function RoomSettingsBar({
   hasPassword: boolean;
   mediaMode: 'video' | 'voice-only';
 }) {
-  const [pwOpen, setPwOpen] = useState(false);
-  const [pw, setPw] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  async function togglePassword() {
-    if (hasPassword) {
-      setBusy(true);
-      await emitWithAck('room:update-rules', { rules: {}, password: '' });
-      setBusy(false);
-    } else {
-      setPwOpen(true);
-    }
-  }
-
-  async function savePassword() {
-    if (pw.length < 4 || pw.length > 20) {
-      toast.error('비밀번호는 4~20자');
-      return;
-    }
-    setBusy(true);
-    const r = await emitWithAck('room:update-rules', { rules: {}, password: pw });
-    setBusy(false);
-    if (r.ok) {
-      setPwOpen(false);
-      setPw('');
-    } else {
-      toast.error(r.error);
-    }
-  }
-
   async function toggleMedia() {
     const next = mediaMode === 'video' ? 'voice-only' : 'video';
     await emitWithAck('room:update-rules', { rules: { mediaMode: next } });
@@ -898,23 +869,9 @@ function RoomSettingsBar({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-2">
-        {/* 공개/비공개 토글 */}
-        <button
-          onClick={isHost ? () => void togglePassword() : undefined}
-          disabled={!isHost || busy}
-          className={`flex flex-1 items-center justify-between rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-            hasPassword
-              ? 'border-amber-500/50 bg-amber-500/15 text-amber-200'
-              : 'border-felt-700/60 bg-felt-950/40 text-felt-300'
-          } ${isHost ? 'cursor-pointer hover:border-amber-400/60' : 'cursor-default'}`}
-        >
-          <span>{hasPassword ? '🔒 비공개방' : '🔓 공개방'}</span>
-          {hasPassword && !isHost && (
-            <span className="font-mono text-[10px] tracking-widest text-amber-400/70">****</span>
-          )}
-        </button>
-
-        {/* 미디어 모드 토글 */}
+        <div className="flex-1">
+          <PasswordToggle hasPassword={hasPassword} editable={isHost} />
+        </div>
         <button
           onClick={isHost ? () => void toggleMedia() : undefined}
           disabled={!isHost}
@@ -927,37 +884,6 @@ function RoomSettingsBar({
           <span>{isVoice ? '🎙️ 음성' : '🎥 화상'}</span>
         </button>
       </div>
-
-      {/* 비밀번호 입력 (토글 시 펼침) */}
-      {pwOpen && isHost && (
-        <div className="flex gap-2">
-          <input
-            value={pw}
-            onChange={(e) => setPw(e.target.value)}
-            maxLength={20}
-            placeholder="비밀번호 4~20자"
-            className="flex-1 rounded-lg border border-felt-700 bg-felt-950 px-3 py-2 text-sm text-felt-100 placeholder-felt-500 focus:border-amber-400 focus:outline-none"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void savePassword();
-              if (e.key === 'Escape') setPwOpen(false);
-            }}
-          />
-          <button
-            onClick={() => void savePassword()}
-            disabled={busy}
-            className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50"
-          >
-            설정
-          </button>
-          <button
-            onClick={() => setPwOpen(false)}
-            className="rounded-lg border border-felt-700 px-3 py-2 text-xs text-felt-300 hover:bg-felt-800"
-          >
-            취소
-          </button>
-        </div>
-      )}
     </div>
   );
 }
