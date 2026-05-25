@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RoomView } from '@gostop/shared';
 import { playSound } from '../lib/sound.ts';
+import { useEventOverlayStore } from '../stores/eventOverlayStore.ts';
 import type { AnimationPhase } from '../lib/animationContext.ts';
 import {
   FLIP_DURATION,
@@ -40,11 +41,6 @@ interface MultiTurnSequence {
   flippingCardId: string | null;
   /** Phase 3 sub-phase — CenterField floating overlay animate target 결정 */
   flippingPhase: FlippingPhase;
-  /**
-   * 이번 턴 손패에서 낸 카드 ID — Phase 1-A부터 Phase 4까지 유지.
-   * CenterField가 Phase 3 fly destination을 이 카드 위치로 stack해 시각 효과.
-   */
-  currentHandCardId: string | null;
   /** 현재 진행 중인 phase — Card layout transition duration이 phase별로 다름 */
   currentPhase: AnimationPhase;
   /** 시퀀스 루프 진행 중 (큐에 pending view 포함) — ended 모달 발화 차단용 */
@@ -87,7 +83,6 @@ export function useMultiTurnSequence(
   const [peakingHandCardId, setPeakingHandCardId] = useState<string | null>(null);
   const [flippingCardId, setFlippingCardId] = useState<string | null>(null);
   const [flippingPhase, setFlippingPhase] = useState<FlippingPhase>(null);
-  const [currentHandCardId, setCurrentHandCardId] = useState<string | null>(null);
   const [currentPhase, setCurrentPhase] = useState<AnimationPhase>('idle');
   const [awaitingStep, setAwaitingStep] = useState<string | null>(null);
   const [sequenceBusy, setSequenceBusy] = useState(false);
@@ -151,7 +146,9 @@ export function useMultiTurnSequence(
     // 폭탄 시 3장, 일반 시 1장. fallback (AI history)은 1장.
     const handCards = findHandCardsRemoved(last, incoming);
     const handCardId = handCards[0]?.id ?? null;
-    const drawnCardId = findDrawnCard(last, incoming, handCardId);
+    const drawnCardId =
+      incoming.lastTurnSpecials?.drawnCardId ??
+      findDrawnCard(last, incoming, handCardId);
     if (!handCardId && !drawnCardId) {
       // 변화 없음 (또는 collected diff만) → 즉시 swap (Phase 4 layoutId 자동)
       setDisplayView(incoming);
@@ -195,7 +192,9 @@ export function useMultiTurnSequence(
     // 폭탄 발동 시 3장 (같은 month), 일반 시 1장. fallback (AI history)은 1장.
     const handCards = findHandCardsRemoved(prev, incoming);
     const handCardId = handCards[0]?.id ?? null;
-    const drawnCardId = findDrawnCard(prev, incoming, handCardId);
+    const drawnCardId =
+      incoming.lastTurnSpecials?.drawnCardId ??
+      findDrawnCard(prev, incoming, handCardId);
 
     if (!handCardId && !drawnCardId) {
       setDisplayView(incoming);
@@ -217,26 +216,10 @@ export function useMultiTurnSequence(
       `▶ seq START — handCards=${handCards.map((c) => c.id).join(',') || 'none'}, drawnCard=${drawnCardId ?? 'none'}`,
     );
 
-    // 폭탄 보너스 카드 (Card.isBomb=true) — 손에서만 제거, field 변화 X.
-    // 일반 카드는 buildPhase1View로 field에 추가.
-    const isBombBonusCard =
-      handCards.length === 1 && handCards[0]?.isBomb === true;
     const phase1View =
       handCards.length === 0
         ? prev
-        : isBombBonusCard
-          ? {
-              ...prev,
-              players: prev.players.map((p) =>
-                p.userId === prev.myUserId
-                  ? {
-                      ...p,
-                      hand: (p.hand ?? []).filter((c) => c.id !== handCards[0]!.id),
-                    }
-                  : p,
-              ),
-            }
-          : buildPhase1View(prev, handCards);
+        : buildPhase1View(prev, handCards);
     // AI/상대 turn Phase 1-A에서 OpponentSlot에 fake hand source motion.div mount.
     // Phase 1-B에서 phase1View로 swap 시 hand → field layoutId 비행.
     const phase1ViewFake =
@@ -262,7 +245,7 @@ export function useMultiTurnSequence(
     // 폭탄 발동 여부 — server lastTurnSpecials.bomb으로 판단 (본인/AI 동일 처리)
     const isBombFire = incoming.lastTurnSpecials?.bomb === true;
 
-    if (handCardId && handCards.length > 0 && !isBombBonusCard) {
+    if (handCardId && handCards.length > 0) {
       await runPhase1(
         tag,
         handCards,
@@ -274,10 +257,7 @@ export function useMultiTurnSequence(
       );
       if (abortRef.current) return;
     } else {
-      plog(
-        tag,
-        `· Phase 1 skip (${isBombBonusCard ? '폭탄 보너스 카드' : '손패 변화 X'})`,
-      );
+      plog(tag, `· Phase 1 skip (손패 변화 X)`);
       setDisplayView(phase1View);
     }
 
@@ -299,7 +279,6 @@ export function useMultiTurnSequence(
 
     plog(tag, `■ seq END → idle`);
     setCurrentPhase('idle');
-    setCurrentHandCardId(null);
     // 다음 sequence가 같은 batch에 진입하면 phase=idle render frame을 건너뛰어
     // useMultiSpecialsTrigger가 trigger 발화 못 함. sleep(0)으로 batch 분리 →
     // idle render 보장 → effects 실행 → trigger.
@@ -326,8 +305,6 @@ export function useMultiTurnSequence(
     // Phase 1-A peak는 사용자가 클릭한 카드(handCards[0])만 — 폭탄이라도 1장만 확대
     // Phase 1-B에서는 handCards 모두 (3장이면 3장 다) 손→바닥 비행
     const peakCardId = handCards[0]?.id ?? '';
-    // currentHandCardId — Phase 3에서 더미 카드를 손패 카드 위에 stack할 때 사용
-    setCurrentHandCardId(peakCardId);
 
     // ---- Phase 1-A ----
     plog(tag, `▶ Phase 1-A 시작 (peak ${HAND_PEAK_DURATION}s) — ${peakCardId}${handCards.length > 1 ? ` (+${handCards.length - 1} 폭탄)` : ''}`);
@@ -349,11 +326,10 @@ export function useMultiTurnSequence(
     setDisplayView(phase1View);
     await sleep(sec(FLY_DURATION_HAND_TO_FIELD));
     if (!handAlreadyInField) {
-      // 사운드도 alreadyInField 시 skip — 모달 후 broadcast 처리 시 중복 재생 방지.
-      // 폭탄 발동 (server lastTurnSpecials.bomb=true) — 'boom' 사운드 (본인/AI 동일).
       if (isBombFire) {
         playSound('boom');
-        plog(tag, `  ▷ Phase 2 폭탄 사운드 (boom.mp3)`);
+        useEventOverlayStore.getState().trigger('bomb');
+        plog(tag, `  ▷ Phase 2 폭탄 사운드 + 이펙트 (boom.mp3)`);
       } else {
         playSound('card-place');
         plog(tag, `  ▷ Phase 2 착지 사운드 (card-place.mp3)`);
@@ -463,7 +439,6 @@ export function useMultiTurnSequence(
     peakingHandCardId,
     flippingCardId,
     flippingPhase,
-    currentHandCardId,
     currentPhase,
     sequenceBusy,
     awaitingStep,

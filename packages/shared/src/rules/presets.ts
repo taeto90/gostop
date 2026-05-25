@@ -46,6 +46,7 @@ export type PresetId =
   | 'gukjoon'
   // §5 고/스톱
   | 'go-stop'
+  | 'ai-stop'
   | 'gobak'
   // §6 특수
   | 'ssaktsseuli'
@@ -257,6 +258,13 @@ export const PRESETS: Record<PresetId, PresetSetup> = {
     myHand: ['m07-yeol'],
     field: ['m07-pi-1'],
     drawTop: ['m11-gwang'],
+  },
+  // AI STOP: 봇 collected에 3광 + 손패에 4번째 광 → 봇 턴에 winScore 도달 → AI STOP
+  'ai-stop': {
+    botCollected: ['m01-gwang', 'm03-gwang', 'm08-gwang'],
+    botHand: ['m11-gwang'],
+    field: ['m11-pi-1'],
+    drawTop: ['m11-pi-2'],
   },
   // 고박: 4광 도달 → 고 누적 검증
   gobak: {

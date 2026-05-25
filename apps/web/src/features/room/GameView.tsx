@@ -40,7 +40,6 @@ import {
   HAND_AREA_RATIO,
   isCompactWidth,
 } from '../../lib/layoutConstants.ts';
-import { HAND_PEAK_DURATION, sec } from '../../lib/animationTiming.ts';
 import { CenterField } from './game-ui/CenterField.tsx';
 import { CompactHeader } from './game-ui/CompactHeader.tsx';
 import { MobileCollected } from './game-ui/MobileCollected.tsx';
@@ -86,6 +85,8 @@ export function GameView({
   mediaSettings,
   onEndedReady,
 }: GameViewProps) {
+  const onEndedReadyRef = useRef(onEndedReady);
+  onEndedReadyRef.current = onEndedReady;
   useWakeLock(view.phase === 'playing');
   const tabRecorder = useTabRecorder();
 
@@ -151,9 +152,13 @@ export function GameView({
 
   // useMultiTurnSequence의 input — prebuild가 있으면 그것을 처리해 Phase 1~3 재생.
   // server broadcast 도착 시 useMultiPlayCard가 prebuild clear → 진짜 view로 전환.
-  const inputView = prebuildView ?? view;
+  // 국준 모달이 열려있으면 AI 턴 시퀀스 hold — 모달 닫힌 후 재개
+  const nineYeolPendingRef = useRef(false);
+  const heldViewRef = useRef(view);
+  if (!nineYeolPendingRef.current) heldViewRef.current = view;
+  const inputView = prebuildView ?? heldViewRef.current;
   // step 모드 토글 (testMode + 호스트일 때만 노출). default ON — 현재 디버깅 흐름 유지.
-  const [stepModeEnabled, setStepModeEnabled] = useState(true);
+  const [stepModeEnabled, setStepModeEnabled] = useState(false);
   const stepMode =
     (view.testMode ?? false) &&
     view.hostUserId === view.myUserId &&
@@ -164,7 +169,6 @@ export function GameView({
     peakingHandCardId: multiPeekingId,
     flippingCardId: multiFlippingId,
     flippingPhase: multiFlippingPhase,
-    currentHandCardId,
     currentPhase: animationPhase,
     sequenceBusy,
     awaitingStep,
@@ -173,24 +177,22 @@ export function GameView({
   // 시퀀스 완료(phase='idle') 시점에 specials EventOverlay 발화 — 손패 비행 끝난 후
   useMultiSpecialsTrigger(displayView, animationPhase);
 
-  // 상대가 STOP 선언 시 EventOverlay 발화 (애니메이션 완료 후)
-  const stoppedByRef = useRef<string | null>(null);
+  // 상대(AI 포함) GO 감지 — goCount 증가 시 EventOverlay 발화
+  const prevGoCountsRef = useRef<Record<string, number>>({});
   useEffect(() => {
-    const stoppedBy = displayView.stoppedByUserId;
-    if (
-      animationPhase === 'idle' &&
-      !sequenceBusy &&
-      stoppedBy &&
-      stoppedBy !== displayView.myUserId &&
-      stoppedBy !== stoppedByRef.current
-    ) {
-      stoppedByRef.current = stoppedBy;
-      const player = displayView.players.find((p) => p.userId === stoppedBy);
-      const name = player?.nickname ?? '상대';
-      useEventOverlayStore.getState().trigger('stop');
-      toast.info(`${name}님이 스톱 선언!`);
+    if (animationPhase !== 'idle' || sequenceBusy) return;
+    const prev = prevGoCountsRef.current;
+    for (const p of displayView.players) {
+      if (p.userId === displayView.myUserId) continue;
+      const prevGo = prev[p.userId] ?? 0;
+      if (p.goCount > prevGo && p.goCount > 0) {
+        useEventOverlayStore.getState().trigger('go');
+      }
     }
-  }, [displayView.stoppedByUserId, animationPhase, sequenceBusy, displayView.myUserId, displayView.players]);
+    const next: Record<string, number> = {};
+    for (const p of displayView.players) next[p.userId] = p.goCount;
+    prevGoCountsRef.current = next;
+  }, [displayView.players, animationPhase, sequenceBusy, displayView.myUserId]);
 
   const effectiveView = displayView;
   const myPlayer = effectiveView.players.find((p) => p.userId === effectiveView.myUserId);
@@ -211,6 +213,7 @@ export function GameView({
   // raw broadcast view 전달 — phase별 displayView 변화 race 방지 (상대 turn 시 잘못 trigger 차단)
   const myPlayerRaw = view.players.find((p) => p.userId === view.myUserId);
   const nineYeol = useNineYeolDecision(view, myPlayerRaw);
+  nineYeolPendingRef.current = nineYeol.open;
   const my9YeolAsSsangPi = myPlayer?.flags?.nineYeolAsSsangPi ?? false;
 
   // 쇼당 선언 — 3인+ 모드, 본인 턴에만 활성화 (친구간 협의 룰)
@@ -249,17 +252,41 @@ export function GameView({
   // 총통 발동 시 EventOverlay 발화 (모든 player 동시)
   useChongtongFireTrigger(displayView);
 
-  // server phase='ended' + staging 완료 시점에 RoomScreen에 신호 (ChoiceModal trigger).
-  // 상대 STOP 시 EventOverlay(2.2초) 표시 후 ChoiceModal 발화.
+  // 게임 종료 시퀀스 — 애니메이션 완료 후 이펙트 → 딜레이 → 모달
+  // STOP: [STOP overlay] → 2s → [게임종료 overlay] → 2s → 모달
+  // 자연 종료: [애니메이션 완료] → 2s → [게임종료 overlay] → 2s → 모달
+  const endedTriggeredRef = useRef(false);
   useEffect(() => {
-    if (displayView.phase === 'ended' && animationPhase === 'idle' && !sequenceBusy) {
-      const stoppedBy = displayView.stoppedByUserId;
-      const isOpponentStop = stoppedBy && stoppedBy !== displayView.myUserId;
-      const delay = isOpponentStop ? 2500 : 0;
-      const timer = setTimeout(() => onEndedReady?.(), delay);
-      return () => clearTimeout(timer);
+    if (displayView.phase !== 'ended') {
+      endedTriggeredRef.current = false;
+      return;
     }
-  }, [displayView.phase, animationPhase, sequenceBusy, displayView.stoppedByUserId, displayView.myUserId, onEndedReady]);
+    if (animationPhase !== 'idle' || sequenceBusy || endedTriggeredRef.current) return;
+    endedTriggeredRef.current = true;
+
+    const trigger = useEventOverlayStore.getState().trigger;
+    const stoppedBy = displayView.stoppedByUserId;
+    const isOpponentStop = stoppedBy && stoppedBy !== displayView.myUserId;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    let t = 0;
+
+    if (isOpponentStop) {
+      trigger('stop');
+      t += 2000;
+    } else {
+      t += 2000;
+    }
+
+    // 게임 종료 이펙트
+    timers.push(setTimeout(() => trigger('game-over'), t));
+    t += 2000;
+
+    // 모달 발화
+    timers.push(setTimeout(() => onEndedReadyRef.current?.(), t));
+
+    return () => timers.forEach(clearTimeout);
+  }, [displayView.phase, animationPhase, sequenceBusy, displayView.stoppedByUserId, displayView.myUserId]);
 
   function handlePlayCardWithPeek(cardId: string) {
     // rules-final.md §4 — 흔들기 게임 도중 발동.
@@ -518,7 +545,7 @@ export function GameView({
         {view.testMode && (
           <button
             onClick={() => setTestControlsVisible((v) => !v)}
-            className="absolute left-1/2 top-2 z-50 -translate-x-1/2 rounded-full border border-rose-500/60 bg-rose-950/90 px-2 py-0.5 text-[12px] font-bold text-rose-100 hover:bg-rose-900/90"
+            className="absolute left-1/2 top-10 z-50 -translate-x-1/2 rounded-full border border-rose-500/60 bg-rose-950/90 px-2 py-0.5 text-[12px] font-bold text-rose-100 hover:bg-rose-900/90"
             title="시나리오 컨트롤 + 로비/설정 5개 토글"
           >
             {testControlsVisible ? '🙈 숨기기' : '🎛️ 컨트롤'}
@@ -655,7 +682,6 @@ export function GameView({
             deckCount={effectiveView.deckCount}
             flippingCardId={effectiveFlippingId ?? null}
             flippingPhase={multiFlippingPhase}
-            handPlacedCardId={currentHandCardId}
             isCompact={isCompact}
           />
           {/* 본인 누적 배수 + 고 횟수 — 게임판 좌측 하단 (사이드바 총점수와 같은 높이) */}

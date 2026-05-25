@@ -31,11 +31,6 @@ interface CenterFieldProps {
   flippingCardId?: string | null;
   /** Phase 3 sub-phase — flip/peak/fly에 따라 floating overlay animate target 분기 */
   flippingPhase?: FlippingPhase;
-  /**
-   * 이번 턴 손패에서 낸 카드 ID — 있으면 Phase 3 flip의 fly destination을 손패 카드 위치에 stack.
-   * (정통 화투처럼 손패 카드 위에 더미 카드 겹쳐 놓이는 시각 효과)
-   */
-  handPlacedCardId?: string | null;
   /** 모바일 가로 모드 — 2행 4열 배치 (PC는 6각형 + 코너 4개) */
   isCompact?: boolean;
 }
@@ -93,7 +88,6 @@ export function CenterField({
   deckCount,
   flippingCardId,
   flippingPhase = null,
-  handPlacedCardId = null,
   isCompact = false,
 }: CenterFieldProps) {
   const layout = useFieldLayout(field);

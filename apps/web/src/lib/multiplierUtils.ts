@@ -1,4 +1,12 @@
-import { calculateScore, type PlayerStateView } from '@gostop/shared';
+import { calculateScore, type Card, type PlayerStateView } from '@gostop/shared';
+
+/** 피 카드 배열의 표시용 가치 합계 (쌍피=2, 쓰리피=3, 일반=1). */
+export function piValue(cards: Card[]): number {
+  return cards.reduce(
+    (sum, c) => (c.bonusPiValue === 3 ? sum + 3 : c.isSsangPi ? sum + 2 : sum + 1),
+    0,
+  );
+}
 
 export function computeMultiplier(p: PlayerStateView | undefined): number {
   if (!p) return 1;

@@ -787,6 +787,7 @@ export const PRESET_LABELS: Record<PresetId, string> = {
   gukjoon: '국준 — 9월 4장 (옵션)',
   // §5 고/스톱
   'go-stop': '고/스톱 — 4점 도달 모달',
+  'ai-stop': 'AI STOP — 봇 4광 → STOP + 종료 이펙트',
   gobak: '고박 — 4광 + 고 누적',
   // §6 특수
   ssaktsseuli: '싹쓸이 — 8월 빈 바닥',

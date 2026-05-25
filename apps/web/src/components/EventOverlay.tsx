@@ -23,6 +23,7 @@ const EVENT_SOUND_MAP: Partial<Record<GameEvent, SoundName>> = {
   myungttadak: 'score-up',
   nagari: 'game-end',
   shodang: 'emoji-react',
+  'game-over': 'game-end',
 };
 
 /** 이벤트별 emoji + 라벨 + 색상 톤. */
@@ -51,6 +52,7 @@ const EVENT_META: Record<GameEvent, EventMeta> = {
   myungttadak: { emoji: '🐦', label: '멍따!', color: 'cyan' },
   nagari: { emoji: '🤝', label: '나가리...', color: 'slate' },
   shodang: { emoji: '🚫', label: '쇼당!', color: 'amber', shake: true },
+  'game-over': { emoji: '🏁', label: '게임 종료', color: 'slate' },
 };
 
 /** Tailwind 안전 — class string에 Pre-defined 매핑 (JIT가 인식하도록) */

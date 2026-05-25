@@ -201,31 +201,42 @@ export function findHandCardsRemoved(
     }
   }
   if (fromHand.length > 0) return fromHand;
-  // fallback — history에 새 play-card 추가됐으면 그 카드 1장 (AI turn)
+  // fallback — history에 새 play-card 추가됐으면 그 카드 (AI turn, hand 마스킹)
   const prevHistLen = prev.history?.length ?? 0;
   const incomingHist = incoming.history ?? [];
   if (incomingHist.length > prevHistLen) {
     const newItem = incomingHist[incomingHist.length - 1];
     if (newItem?.type === 'play-card') {
       const card = getCardById(newItem.cardId);
-      if (card) return [card];
+      if (!card) return [];
+      // AI 폭탄: 같은 월 3장이 손패에서 나옴 — collected diff에서 복원
+      if (incoming.lastTurnSpecials?.bomb === true) {
+        const prevFieldIds = new Set(prev.field.map((c) => c.id));
+        const turnP = incoming.players.find((p) => p.userId === prev.turnUserId);
+        const turnPPrev = prev.players.find((p) => p.userId === prev.turnUserId);
+        if (turnP && turnPPrev) {
+          const prevCollIds = new Set(turnPPrev.collected.map((c) => c.id));
+          const bombHandCards = turnP.collected.filter(
+            (c) =>
+              c.month === card.month &&
+              !prevCollIds.has(c.id) &&
+              !prevFieldIds.has(c.id),
+          );
+          if (bombHandCards.length === 3) return bombHandCards;
+        }
+      }
+      return [card];
     }
   }
   return [];
 }
 
-/** @deprecated 후방 호환용 — findHandCardsRemoved의 첫 번째 카드 반환. 새 코드는 findHandCardsRemoved 사용. */
-export function findHandCardObj(prev: RoomView, incoming: RoomView): Card | null {
-  const cards = findHandCardsRemoved(prev, incoming);
-  return cards[0] ?? null;
-}
 
 /**
- * 더미에서 뒤집힌 카드 ID.
+ * 더미에서 뒤집힌 카드 ID (fallback).
  *
- * deckCount 감소 + field/collected에 추가된 카드 중 손패 카드(excludeId) 제외 마지막.
- * collected fallback은 prev.field에 있던 카드도 제외 — 매칭으로 collected에 간
- * "기존 field 카드"가 아닌 "deck에서 새로 뒤집힌 카드"만 반환해야 함.
+ * 서버가 `lastTurnSpecials.drawnCardId`를 제공하면 그것을 우선 사용.
+ * 이 함수는 drawnCardId가 없는 구버전 서버 호환용 diff 추론 fallback.
  */
 export function findDrawnCard(
   prev: RoomView,
@@ -235,6 +246,9 @@ export function findDrawnCard(
   if (prev.deckCount <= incoming.deckCount) return null;
 
   const prevFieldIds = new Set(prev.field.map((c) => c.id));
+  const stealCardIds = new Set(
+    (incoming.lastTurnSpecials?.stealPiCards ?? []).map((s) => s.cardId),
+  );
   const newFieldCards: Card[] = incoming.field.filter(
     (c) => !prevFieldIds.has(c.id) && c.id !== excludeId,
   );
@@ -250,7 +264,8 @@ export function findDrawnCard(
       (c) =>
         !prevCollectedIds.has(c.id) &&
         c.id !== excludeId &&
-        !prevFieldIds.has(c.id), // prev.field에 있던 매칭 카드 제외 (deck에서 온 카드만)
+        !prevFieldIds.has(c.id) &&
+        !stealCardIds.has(c.id),
     );
     if (added.length > 0) return added[added.length - 1]!.id;
   }

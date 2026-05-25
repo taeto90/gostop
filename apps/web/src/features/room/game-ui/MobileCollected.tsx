@@ -3,6 +3,7 @@ import { calculateScore, canDeclareGoStop } from '@gostop/shared';
 import { AnimatedNumber } from '../../../components/AnimatedNumber.tsx';
 import { Card } from '../../../components/Card.tsx';
 import { COLLECTED_CARD_WIDTH } from '../../../lib/layoutConstants.ts';
+import { piValue } from '../../../lib/multiplierUtils.ts';
 
 interface MobileCollectedProps {
   collected: CardType[];
@@ -71,6 +72,7 @@ export function MobileCollected({
             key={kind}
             kind={kind}
             cards={groups[kind]}
+            displayCount={kind === 'pi' ? piValue(groups[kind]) : groups[kind].length}
             cardW={cardW}
             isCompact={isCompact}
           />
@@ -104,16 +106,16 @@ export function MobileCollected({
 function KindGroup({
   kind,
   cards,
+  displayCount,
   cardW,
   isCompact,
 }: {
   kind: Kind;
   cards: CardType[];
+  displayCount: number;
   cardW: number;
   isCompact: boolean;
 }) {
-  // 우측 큰 숫자 = 카드 수 (점수는 하단 '총 점수'에 합산). OpponentSlot CollectedStrip과
-  // 일관 — 카드 5장/9장 임계값 전엔 점수 0이라 시각적 카운트가 카드 수가 자연스러움.
   const label = (
     <div
       className={`flex flex-shrink-0 items-baseline justify-between gap-1 rounded border ${
@@ -124,7 +126,7 @@ function KindGroup({
         {LABELS[kind]}
       </span>
       <AnimatedNumber
-        value={cards.length}
+        value={displayCount}
         className={isCompact ? 'text-sm font-extrabold' : 'text-base font-extrabold'}
       />
     </div>

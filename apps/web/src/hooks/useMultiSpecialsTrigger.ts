@@ -26,8 +26,9 @@ export function useMultiSpecialsTrigger(
     const sp = view.lastTurnSpecials;
     if (!sp) return;
     const trigger = useEventOverlayStore.getState().trigger;
-    // 우선순위: 폭탄 > 따닥 > 자뻑 > 쪽 > 싹쓸이 > 뻑
-    if (sp.bomb) trigger('bomb');
+    // 우선순위: 따닥 > 자뻑 > 쪽 > 싹쓸이 > 뻑
+    // 폭탄은 Phase 1-B(카드 착지) 시점에 runPhase1에서 직접 발화 — 더미 뒤집기 전에 보여야 함
+    if (sp.bomb) { /* runPhase1에서 처리 */ }
     else if (sp.ttadak) trigger('ttadak');
     else if (sp.recoveredMonth !== undefined && sp.isOwnRecover) trigger('ja-ppeok');
     else if (sp.jjok) trigger('jjok');

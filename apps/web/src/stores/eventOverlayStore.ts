@@ -21,7 +21,8 @@ export type GameEvent =
   | 'bak' // 박 (피박/광박/멍박 발동)
   | 'myungttadak' // 멍따 (끗 7장)
   | 'nagari' // 나가리 (무승부)
-  | 'shodang'; // 쇼당 (본인 턴 무효 선언)
+  | 'shodang' // 쇼당 (본인 턴 무효 선언)
+  | 'game-over'; // 게임 종료 — STOP/자연종료 후 모달 전 표시
 
 interface EventOverlayState {
   /** 현재 표시 중인 이벤트. null이면 표시 X */

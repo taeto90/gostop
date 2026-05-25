@@ -330,6 +330,8 @@ export interface TurnSpecials {
    * shared executeTurn 단계에서는 빈 배열, server playCardForPlayer/aiTurn이 채움.
    */
   stealPiCards?: { from: string; to: string; cardId: string }[];
+  /** 더미에서 뒤집힌 카드 ID — 클라 Phase 3 애니메이션에서 직접 사용 (diff 추론 불필요) */
+  drawnCardId?: string;
 }
 
 export interface TurnResult {
@@ -485,6 +487,7 @@ export function executeTurn(
       };
     }
     const drawnCard = draw.drawnCard;
+    specials.drawnCardId = drawnCard.id;
     const drawResult = playCard(drawnCard, field, {
       targetCardId: options.targetAfterDraw,
       allowPpeok,
@@ -554,6 +557,7 @@ export function executeTurn(
       };
     }
     const drawnCard = draw.drawnCard;
+    specials.drawnCardId = drawnCard.id;
     const drawResult = playCard(drawnCard, field, {
       targetCardId: options.targetAfterDraw,
       allowPpeok,
@@ -667,6 +671,7 @@ export function executeTurn(
       };
     }
     const drawnCard = draw.drawnCard;
+    specials.drawnCardId = drawnCard.id;
     const newDeck = draw.newDeck;
     const drawResult = playCard(drawnCard, field, {
       targetCardId: options.targetAfterDraw,
@@ -773,6 +778,7 @@ export function executeTurn(
     };
   }
   const drawnCard = draw.drawnCard;
+  specials.drawnCardId = drawnCard.id;
   const newDeck = draw.newDeck;
 
   // 4. 뒤집힌 카드 → 바닥 매칭
