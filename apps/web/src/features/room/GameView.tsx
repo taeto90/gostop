@@ -9,6 +9,7 @@ import { useMultiTurnSequence } from '../../hooks/useMultiTurnSequence.ts';
 import { useShakeBombFireTrigger } from '../../hooks/useShakeBombFireTrigger.ts';
 import { useWakeLock } from '../../hooks/useWakeLock.ts';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts.ts';
+import { useTabRecorder } from '../../hooks/useTabRecorder.ts';
 import { useChongtongFireTrigger } from '../../hooks/useChongtongFireTrigger.ts';
 import { toast } from '../../stores/toastStore.ts';
 import { useEventOverlayStore } from '../../stores/eventOverlayStore.ts';
@@ -86,6 +87,7 @@ export function GameView({
   onEndedReady,
 }: GameViewProps) {
   useWakeLock(view.phase === 'playing');
+  const tabRecorder = useTabRecorder();
 
   // 멀티 모드: 본인 카드 클릭 시 잠시 확대 효과 (Phase 1 부분 적용).
   // 솔로(SoloPlay)는 props로 명시 전달, 멀티는 클라 단독으로 짧게 표시.
@@ -570,6 +572,19 @@ export function GameView({
                 >
                   {stepModeEnabled ? '⏸ Step ON' : '▶ Step OFF'}
                 </button>
+                {import.meta.env.DEV && (
+                  <button
+                    onClick={tabRecorder.recording ? tabRecorder.stop : () => void tabRecorder.start()}
+                    className={`rounded border px-2 py-0.5 text-[15px] font-bold ${
+                      tabRecorder.recording
+                        ? 'border-red-400/60 bg-red-500/30 text-red-100 hover:bg-red-500/50'
+                        : 'border-felt-700/60 bg-felt-950/80 text-felt-200 hover:border-felt-500'
+                    }`}
+                    title={tabRecorder.recording ? '녹화 중지 → .webm 다운로드' : '탭 녹화 시작'}
+                  >
+                    {tabRecorder.recording ? '⏹ 녹화 중지' : '⏺ 녹화'}
+                  </button>
+                )}
               </>
             )}
           </div>
