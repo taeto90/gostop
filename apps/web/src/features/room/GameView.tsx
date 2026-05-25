@@ -21,6 +21,7 @@ import {
 } from './game-ui/ShakeDecisionModal.tsx';
 import { NineYeolPickerModal } from './game-ui/NineYeolPickerModal.tsx';
 import { GoStopModal } from './game-ui/GoStopModal.tsx';
+import { ScoreDetailModal } from './game-ui/ScoreDetailModal.tsx';
 import { useNineYeolDecision } from '../../hooks/useNineYeolDecision.ts';
 import { PRESET_LABELS } from './RoomLobbyModal.tsx';
 import { computeMultiplier, multiplierBreakdown } from '../../lib/multiplierUtils.ts';
@@ -104,6 +105,7 @@ export function GameView({
       }
     | null
   >(null);
+  const [scoreDetailPlayer, setScoreDetailPlayer] = useState<import('@gostop/shared').PlayerStateView | null>(null);
   const [rootRef, { width: rootW, height: rootH }] = useElementSize<HTMLDivElement>();
   const isCompact = isCompactWidth(rootW);
   // 손패 영역 높이 — 화면 height 비율 기반 (lib/layoutConstants 에서 조절).
@@ -602,6 +604,7 @@ export function GameView({
                     isAfk={afkUserId === p.userId}
                     remainingSec={isThisTurn ? remainingSec : null}
                     menuActions={buildOpponentMenu(p.userId)}
+                    onScoreClick={() => setScoreDetailPlayer(p)}
                   />
                 );
               })}
@@ -776,6 +779,7 @@ export function GameView({
                   setSettingsOpen(false);
                   setRulesOpen(true);
                 }}
+                hasPassword={view.hasPassword ?? false}
               />
             ) : undefined
           }
@@ -856,6 +860,13 @@ export function GameView({
             pendingMultiPick === null
           }
           onPick={nineYeol.pick}
+        />
+
+        <ScoreDetailModal
+          open={scoreDetailPlayer !== null}
+          player={scoreDetailPlayer}
+          allowGukJoon={view.rules?.allowGukJoon ?? true}
+          onClose={() => setScoreDetailPlayer(null)}
         />
 
         {/* 모바일 화상 풀스크린 모달 — render prop으로 LiveKit context 안 컴포넌트 호출 */}
