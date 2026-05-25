@@ -119,6 +119,9 @@ const PresetIdSchema = z.enum([
   'three-modals',
   'go-stop',
   'ai-stop',
+  'ai-go',
+  'ai-bomb-shake',
+  'quick-end',
   'gobak',
 ]);
 

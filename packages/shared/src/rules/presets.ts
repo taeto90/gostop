@@ -47,6 +47,9 @@ export type PresetId =
   // §5 고/스톱
   | 'go-stop'
   | 'ai-stop'
+  | 'ai-go'
+  | 'ai-bomb-shake'
+  | 'quick-end'
   | 'gobak'
   // §6 특수
   | 'ssaktsseuli'
@@ -265,6 +268,26 @@ export const PRESETS: Record<PresetId, PresetSetup> = {
     botHand: ['m11-gwang'],
     field: ['m11-pi-1'],
     drawTop: ['m11-pi-2'],
+  },
+  // AI GO: 봇 collected 3광 + 손패 다수 + matchable → medium AI가 GO 선언
+  // 봇 hand 6장 + goCount 0 + matchable 다수 → shouldAIGo(medium) = true
+  'ai-go': {
+    botCollected: ['m01-gwang', 'm03-gwang', 'm08-gwang'],
+    botHand: ['m11-gwang', 'm05-yeol', 'm05-ddi', 'm05-pi-1', 'm05-pi-2', 'm02-yeol'],
+    field: ['m11-pi-1', 'm05-ssangpi', 'm02-pi-1'],
+    drawTop: ['m11-pi-2'],
+  },
+  // AI 흔들기+폭탄: 봇 손패에 6월 3장 + 바닥 6월 1장 → 흔들기 선언 후 폭탄 발동
+  'ai-bomb-shake': {
+    botHand: ['m06-yeol', 'm06-ddi', 'm06-pi-1'],
+    field: ['m06-pi-2'],
+  },
+  // 빠른 종료: 양쪽 손패 1장씩 → 본인 카드 내면 AI 턴 후 게임 종료
+  'quick-end': {
+    myHand: ['m07-yeol'],
+    botHand: ['m10-ddi'],
+    field: ['m07-pi-1', 'm10-pi-1'],
+    drawTop: ['m07-pi-2', 'm10-pi-2'],
   },
   // 고박: 4광 도달 → 고 누적 검증
   gobak: {
