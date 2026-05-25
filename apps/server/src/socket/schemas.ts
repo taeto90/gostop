@@ -65,8 +65,11 @@ export const UpdateRulesSchema = z.object({
         .union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)])
         .optional(),
       mediaMode: z.enum(['video', 'voice-only']).optional(),
+      bonusPiTwoCount: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
+      bonusPiThreeCount: z.union([z.literal(0), z.literal(1)]).optional(),
     })
     .strict(),
+  password: z.string().max(20).optional(),
 });
 
 export const ChatSendSchema = z.object({

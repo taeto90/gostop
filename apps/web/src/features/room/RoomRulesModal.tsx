@@ -168,16 +168,6 @@ export function RoomRulesModal({
                 />
               </RuleSection>
 
-              <RuleSection title="🎙️ 미디어 모드">
-                <ChoiceRow
-                  options={['video', 'voice-only'] as const}
-                  value={rules.mediaMode}
-                  onPick={(v) => update('mediaMode', v)}
-                  format={(v) => (v === 'video' ? '🎥 화상 + 음성' : '🎙️ 음성 전용')}
-                  hint="음성 전용 시 카메라 publish 권한 X (server 강제). 변경은 다음 LiveKit 재연결 시 반영"
-                />
-              </RuleSection>
-
               {/* --- 아래는 UI만, 코드 미적용 (추후) --- */}
               <div className="my-2 rounded bg-felt-950/50 px-3 py-2 text-[10px] text-felt-400">
                 ⏳ 아래 옵션은 UI만 — 점진 적용 예정

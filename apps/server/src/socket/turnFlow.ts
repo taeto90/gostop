@@ -304,7 +304,8 @@ export function applyGo(
  * declare-stop 처리 — phase='ended', pendingGoStop clear.
  * 점수 정산은 client측 ResultView에서 calculateFinalScore로.
  */
-export function applyStop(io: IO, room: Room): void {
+export function applyStop(io: IO, room: Room, stoppedByUserId?: string): void {
+  room.stoppedByUserId = stoppedByUserId ?? room.pendingGoStop?.playerId ?? null;
   room.phase = 'ended';
   room.pendingGoStop = null;
   if (room.turnTimerRef !== undefined) {

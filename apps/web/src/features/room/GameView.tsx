@@ -11,6 +11,7 @@ import { useWakeLock } from '../../hooks/useWakeLock.ts';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts.ts';
 import { useChongtongFireTrigger } from '../../hooks/useChongtongFireTrigger.ts';
 import { toast } from '../../stores/toastStore.ts';
+import { useEventOverlayStore } from '../../stores/eventOverlayStore.ts';
 import type { PresetId, RoomView } from '@gostop/shared';
 import { getMatchableCardsFromHand, PRESETS } from '@gostop/shared';
 import { TargetPickerModal } from './game-ui/TargetPickerModal.tsx';
@@ -161,11 +162,31 @@ export function GameView({
     flippingPhase: multiFlippingPhase,
     currentHandCardId,
     currentPhase: animationPhase,
+    sequenceBusy,
     awaitingStep,
     continueStep,
   } = useMultiTurnSequence(inputView, { stepMode });
   // 시퀀스 완료(phase='idle') 시점에 specials EventOverlay 발화 — 손패 비행 끝난 후
   useMultiSpecialsTrigger(displayView, animationPhase);
+
+  // 상대가 STOP 선언 시 EventOverlay 발화 (애니메이션 완료 후)
+  const stoppedByRef = useRef<string | null>(null);
+  useEffect(() => {
+    const stoppedBy = displayView.stoppedByUserId;
+    if (
+      animationPhase === 'idle' &&
+      !sequenceBusy &&
+      stoppedBy &&
+      stoppedBy !== displayView.myUserId &&
+      stoppedBy !== stoppedByRef.current
+    ) {
+      stoppedByRef.current = stoppedBy;
+      const player = displayView.players.find((p) => p.userId === stoppedBy);
+      const name = player?.nickname ?? '상대';
+      useEventOverlayStore.getState().trigger('stop');
+      toast.info(`${name}님이 스톱 선언!`);
+    }
+  }, [displayView.stoppedByUserId, animationPhase, sequenceBusy, displayView.myUserId, displayView.players]);
 
   const effectiveView = displayView;
   const myPlayer = effectiveView.players.find((p) => p.userId === effectiveView.myUserId);
@@ -225,12 +246,16 @@ export function GameView({
   useChongtongFireTrigger(displayView);
 
   // server phase='ended' + staging 완료 시점에 RoomScreen에 신호 (ChoiceModal trigger).
-  // displayView.phase는 staging 마지막 단계에서야 'ended'로 전환되므로 자동으로 4-phase 완료 후.
+  // 상대 STOP 시 EventOverlay(2.2초) 표시 후 ChoiceModal 발화.
   useEffect(() => {
-    if (displayView.phase === 'ended' && animationPhase === 'idle') {
-      onEndedReady?.();
+    if (displayView.phase === 'ended' && animationPhase === 'idle' && !sequenceBusy) {
+      const stoppedBy = displayView.stoppedByUserId;
+      const isOpponentStop = stoppedBy && stoppedBy !== displayView.myUserId;
+      const delay = isOpponentStop ? 2500 : 0;
+      const timer = setTimeout(() => onEndedReady?.(), delay);
+      return () => clearTimeout(timer);
     }
-  }, [displayView.phase, animationPhase, onEndedReady]);
+  }, [displayView.phase, animationPhase, sequenceBusy, displayView.stoppedByUserId, displayView.myUserId, onEndedReady]);
 
   function handlePlayCardWithPeek(cardId: string) {
     // rules-final.md §4 — 흔들기 게임 도중 발동.

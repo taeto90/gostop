@@ -12,7 +12,6 @@ import { LobbyProfileCard } from './LobbyProfileCard.tsx';
 import { LobbyActionCards } from './LobbyActionCards.tsx';
 import { LobbyResumeCard } from './LobbyResumeCard.tsx';
 import { LobbyRoomList } from './LobbyRoomList.tsx';
-import { CreateRoomModal } from './CreateRoomModal.tsx';
 import { PasswordPromptModal } from './PasswordPromptModal.tsx';
 
 export function Lobby() {
@@ -20,7 +19,6 @@ export function Lobby() {
   const navigate = useNavigate();
   const [helpOpen, setHelpOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   // 비밀방 입장 시 비밀번호 입력 모달 — 어떤 방인지 + 관전 여부 + 에러 메시지
@@ -47,25 +45,18 @@ export function Lobby() {
   // profile이 없으면 App.tsx AuthGuard가 처리 — 여기 도달 시 항상 있음
   if (!profile) return null;
 
-  async function createRoom(opts: {
-    password?: string;
-    asSpectator: boolean;
-    mediaMode: 'video' | 'voice-only';
-  }) {
+  async function createRoom() {
     if (!profile) return;
     setBusy(true);
     const result = await emitWithAck('room:create', {
       userId: profile.userId,
       nickname: profile.nickname,
       emojiAvatar: profile.emojiAvatar,
-      asSpectator: opts.asSpectator,
-      password: opts.password,
-      mediaMode: opts.mediaMode,
+      asSpectator: false,
+      mediaMode: 'voice-only',
     });
     setBusy(false);
     if (result.ok) {
-      setCreateOpen(false);
-      // 명시적 입장 — leave flag 제거
       clearLeftRoomGuard();
       navigate(`/room/${result.data.roomId}`);
     } else {
@@ -147,7 +138,7 @@ export function Lobby() {
               />
             )}
             <LobbyActionCards
-              onCreateRoom={() => setCreateOpen(true)}
+              onCreateRoom={() => void createRoom()}
               busy={busy}
             />
           </div>
@@ -181,12 +172,6 @@ export function Lobby() {
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
       <HistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} />
-      <CreateRoomModal
-        open={createOpen}
-        busy={busy}
-        onClose={() => setCreateOpen(false)}
-        onCreate={createRoom}
-      />
       <PasswordPromptModal
         open={passwordPrompt !== null}
         hostNickname={passwordPrompt?.room.hostNickname ?? ''}

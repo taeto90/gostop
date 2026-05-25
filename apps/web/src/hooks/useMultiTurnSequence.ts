@@ -8,7 +8,8 @@ import {
   FLY_DURATION_TO_COLLECTED,
   FLY_TO_SLOT_DURATION,
   HAND_PEAK_DURATION,
-  INTER_PHASE_DELAY,
+  DELAY_AFTER_HAND,
+  DELAY_AFTER_FLIP,
   SCALE_PEAK_DURATION,
   sec,
 } from '../lib/animationTiming.ts';
@@ -46,6 +47,8 @@ interface MultiTurnSequence {
   currentHandCardId: string | null;
   /** 현재 진행 중인 phase — Card layout transition duration이 phase별로 다름 */
   currentPhase: AnimationPhase;
+  /** 시퀀스 루프 진행 중 (큐에 pending view 포함) — ended 모달 발화 차단용 */
+  sequenceBusy: boolean;
   /** step 모드일 때 사용자 click 대기 중인 라벨. null이면 자동 진행 또는 비활성. */
   awaitingStep: string | null;
   /** 모달/Space 클릭 시 호출 — 다음 sub-phase 진행 */
@@ -65,7 +68,9 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  *   Phase 1-A: 손패 카드 확대         (HAND_PEAK_DURATION)
  *   Phase 1-B: hand → field 비행      (FLY_DURATION_HAND_TO_FIELD, layoutId 자동)
  *   Phase 2:   착지 사운드             (Phase 1-B 시작과 동시)
- *   INTER:    단계 사이 대기           (INTER_PHASE_DELAY)
+ *   DELAY:   Phase 2→3 대기           (DELAY_AFTER_HAND)
+ *   ...
+ *   DELAY:   Phase 3→4 대기           (DELAY_AFTER_FLIP)
  *   Phase 3:  더미 flip + 확대 + 비행 (FLIP + SCALE_PEAK + FLY_TO_SLOT)
  *   Phase 4:  진짜 view swap          (FLY_DURATION_TO_COLLECTED, collected stagger)
  *
@@ -85,6 +90,7 @@ export function useMultiTurnSequence(
   const [currentHandCardId, setCurrentHandCardId] = useState<string | null>(null);
   const [currentPhase, setCurrentPhase] = useState<AnimationPhase>('idle');
   const [awaitingStep, setAwaitingStep] = useState<string | null>(null);
+  const [sequenceBusy, setSequenceBusy] = useState(false);
 
   const processingRef = useRef(false);
   const pendingViewRef = useRef<RoomView | null>(null);
@@ -167,6 +173,7 @@ export function useMultiTurnSequence(
   /** 큐가 빌 때까지 sequence 반복. abort 시 즉시 종료. */
   async function runSequenceLoop(firstIncoming: RoomView): Promise<void> {
     processingRef.current = true;
+    setSequenceBusy(true);
     abortRef.current = false;
     let target: RoomView | null = firstIncoming;
     while (target !== null && !abortRef.current) {
@@ -179,6 +186,7 @@ export function useMultiTurnSequence(
       pendingViewRef.current = null;
     }
     processingRef.current = false;
+    setSequenceBusy(false);
     abortRef.current = false;
   }
 
@@ -276,6 +284,12 @@ export function useMultiTurnSequence(
     if (drawnCardId) {
       await runPhase3(tag, drawnCardId, phase3View, drawnAlreadyInField);
       if (abortRef.current) return;
+
+      // ---- DELAY_AFTER_FLIP (Phase 3→4) ----
+      plog(tag, `▶ DELAY_AFTER_FLIP 시작 (${DELAY_AFTER_FLIP}s)`);
+      await sleep(sec(DELAY_AFTER_FLIP));
+      if (abortRef.current) return;
+      plog(tag, `✓ DELAY_AFTER_FLIP 완료`);
     } else {
       plog(tag, `· Phase 3 skip (더미 X)`);
     }
@@ -349,11 +363,11 @@ export function useMultiTurnSequence(
     }
     plog(tag, `✓ Phase 1-B 완료`);
 
-    // ---- INTER_PHASE_DELAY ----
-    plog(tag, `▶ INTER_PHASE_DELAY 시작 (${INTER_PHASE_DELAY}s)`);
-    await sleep(sec(INTER_PHASE_DELAY));
+    // ---- DELAY_AFTER_HAND (Phase 2→3) ----
+    plog(tag, `▶ DELAY_AFTER_HAND 시작 (${DELAY_AFTER_HAND}s)`);
+    await sleep(sec(DELAY_AFTER_HAND));
     if (abortRef.current) return;
-    plog(tag, `✓ INTER_PHASE_DELAY 완료`);
+    plog(tag, `✓ DELAY_AFTER_HAND 완료`);
     // Phase 1-A/1-B/INTER는 하나의 묶음으로 자동 진행 — 끝에서만 click 대기
     await waitForStep('Phase 1 전체 완료 → Phase 3-A 시작');
   }
@@ -451,6 +465,7 @@ export function useMultiTurnSequence(
     flippingPhase,
     currentHandCardId,
     currentPhase,
+    sequenceBusy,
     awaitingStep,
     continueStep,
   };

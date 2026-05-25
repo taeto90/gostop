@@ -169,7 +169,7 @@ export interface ClientToServerEvents {
 
   /** 호스트가 방 룰 변경 (대기실 한정) */
   'room:update-rules': (
-    payload: { rules: Partial<import('./types/rules.ts').RoomRules> },
+    payload: { rules: Partial<import('./types/rules.ts').RoomRules>; password?: string },
     callback: (result: Result) => void,
   ) => void;
 

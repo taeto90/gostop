@@ -71,5 +71,7 @@ export function buildRoomView(room: Room, viewerUserId: string): RoomView {
     turnStartedAt: room.turnStartedAt,
     currentTurnLimitSec: room.currentTurnLimitSec,
     pendingGoStop: room.pendingGoStop ?? null,
+    stoppedByUserId: room.stoppedByUserId ?? null,
+    hasPassword: !!room.password,
   };
 }

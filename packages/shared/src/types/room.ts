@@ -88,6 +88,8 @@ export interface Room {
    * declare-go/declare-stop 전까지 turn 이동 안 함. AI 봇은 server에서 자동 결정.
    */
   pendingGoStop?: { playerId: string; score: number } | null;
+  /** STOP 선언자 userId — 클라가 EventOverlay 'stop' 표시 + 종료 전 알림용 */
+  stoppedByUserId?: string | null;
 }
 
 /**

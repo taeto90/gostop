@@ -93,6 +93,9 @@ export interface RoomView {
    * declare-go 시 turn 계속 진행, declare-stop 시 phase='ended' + 점수 정산.
    */
   pendingGoStop?: { playerId: string; score: number } | null;
+  /** STOP 선언자 userId — EventOverlay 표시 + 종료 전 알림 */
+  stoppedByUserId?: string | null;
+  hasPassword?: boolean;
 }
 
 /**

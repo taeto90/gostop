@@ -898,6 +898,9 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
       }
 
       room.rules = { ...room.rules, ...parsed.data.rules };
+      if (parsed.data.password !== undefined) {
+        room.password = parsed.data.password || undefined;
+      }
       cb({ ok: true });
 
       if (Object.keys(changes).length > 0) {

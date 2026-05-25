@@ -170,6 +170,12 @@ export function RoomLobbyModal({ view }: RoomLobbyModalProps) {
             <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
               <InviteLink roomId={view.roomId} />
 
+              <RoomSettingsBar
+                isHost={isHost}
+                hasPassword={view.hasPassword ?? false}
+                mediaMode={view.rules?.mediaMode ?? 'voice-only'}
+              />
+
               <MemberSection
                 view={view}
                 isHost={isHost}
@@ -186,8 +192,6 @@ export function RoomLobbyModal({ view }: RoomLobbyModalProps) {
                   onOpenSetup={() => setAiSetupOpen(true)}
                 />
               )}
-
-              <MediaModeBadge mode={view.rules?.mediaMode ?? 'video'} />
 
               {isHost && (
                 <TestModeToggle checked={testMode} onChange={setTestMode} />
@@ -845,21 +849,115 @@ function AnimationSpeedSelect({
   );
 }
 
-function MediaModeBadge({ mode }: { mode: 'video' | 'voice-only' }) {
-  const isVoice = mode === 'voice-only';
+function RoomSettingsBar({
+  isHost,
+  hasPassword,
+  mediaMode,
+}: {
+  isHost: boolean;
+  hasPassword: boolean;
+  mediaMode: 'video' | 'voice-only';
+}) {
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pw, setPw] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function togglePassword() {
+    if (hasPassword) {
+      setBusy(true);
+      await emitWithAck('room:update-rules', { rules: {}, password: '' });
+      setBusy(false);
+    } else {
+      setPwOpen(true);
+    }
+  }
+
+  async function savePassword() {
+    if (pw.length < 4 || pw.length > 20) {
+      toast.error('비밀번호는 4~20자');
+      return;
+    }
+    setBusy(true);
+    const r = await emitWithAck('room:update-rules', { rules: {}, password: pw });
+    setBusy(false);
+    if (r.ok) {
+      setPwOpen(false);
+      setPw('');
+    } else {
+      toast.error(r.error);
+    }
+  }
+
+  async function toggleMedia() {
+    const next = mediaMode === 'video' ? 'voice-only' : 'video';
+    await emitWithAck('room:update-rules', { rules: { mediaMode: next } });
+  }
+
+  const isVoice = mediaMode === 'voice-only';
+
   return (
-    <div
-      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
-        isVoice
-          ? 'border-sky-500/40 bg-sky-500/10 text-sky-200'
-          : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-      }`}
-    >
-      <span>{isVoice ? '🎙️' : '🎥'}</span>
-      <span>
-        <b>미디어 모드</b> — {isVoice ? '음성 전용 (카메라 X)' : '화상 + 음성'}
-      </span>
-      <span className="ml-auto text-[10px] opacity-70">호스트가 룰 모달에서 변경 가능</span>
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-2">
+        {/* 공개/비공개 토글 */}
+        <button
+          onClick={isHost ? () => void togglePassword() : undefined}
+          disabled={!isHost || busy}
+          className={`flex flex-1 items-center justify-between rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+            hasPassword
+              ? 'border-amber-500/50 bg-amber-500/15 text-amber-200'
+              : 'border-felt-700/60 bg-felt-950/40 text-felt-300'
+          } ${isHost ? 'cursor-pointer hover:border-amber-400/60' : 'cursor-default'}`}
+        >
+          <span>{hasPassword ? '🔒 비공개방' : '🔓 공개방'}</span>
+          {hasPassword && !isHost && (
+            <span className="font-mono text-[10px] tracking-widest text-amber-400/70">****</span>
+          )}
+        </button>
+
+        {/* 미디어 모드 토글 */}
+        <button
+          onClick={isHost ? () => void toggleMedia() : undefined}
+          disabled={!isHost}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+            isVoice
+              ? 'border-sky-500/50 bg-sky-500/15 text-sky-200'
+              : 'border-emerald-500/50 bg-emerald-500/15 text-emerald-200'
+          } ${isHost ? 'cursor-pointer hover:border-amber-400/60' : 'cursor-default'}`}
+        >
+          <span>{isVoice ? '🎙️ 음성' : '🎥 화상'}</span>
+        </button>
+      </div>
+
+      {/* 비밀번호 입력 (토글 시 펼침) */}
+      {pwOpen && isHost && (
+        <div className="flex gap-2">
+          <input
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            maxLength={20}
+            placeholder="비밀번호 4~20자"
+            className="flex-1 rounded-lg border border-felt-700 bg-felt-950 px-3 py-2 text-sm text-felt-100 placeholder-felt-500 focus:border-amber-400 focus:outline-none"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void savePassword();
+              if (e.key === 'Escape') setPwOpen(false);
+            }}
+          />
+          <button
+            onClick={() => void savePassword()}
+            disabled={busy}
+            className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50"
+          >
+            설정
+          </button>
+          <button
+            onClick={() => setPwOpen(false)}
+            className="rounded-lg border border-felt-700 px-3 py-2 text-xs text-felt-300 hover:bg-felt-800"
+          >
+            취소
+          </button>
+        </div>
+      )}
     </div>
   );
 }
