@@ -155,7 +155,9 @@ export function GameView({
   // 국준 모달이 열려있으면 AI 턴 시퀀스 hold — 모달 닫힌 후 재개
   const nineYeolPendingRef = useRef(false);
   const heldViewRef = useRef(view);
-  if (!nineYeolPendingRef.current) heldViewRef.current = view;
+  if (!nineYeolPendingRef.current) {
+    heldViewRef.current = view;
+  }
   const inputView = prebuildView ?? heldViewRef.current;
   // step 모드 토글 (testMode + 호스트일 때만 노출). default ON — 현재 디버깅 흐름 유지.
   const [stepModeEnabled, setStepModeEnabled] = useState(false);
@@ -256,9 +258,15 @@ export function GameView({
   // STOP: [STOP overlay] → 2s → [게임종료 overlay] → 2s → 모달
   // 자연 종료: [애니메이션 완료] → 2s → [게임종료 overlay] → 2s → 모달
   const endedTriggeredRef = useRef(false);
+  const endedTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => {
     if (displayView.phase !== 'ended') {
-      endedTriggeredRef.current = false;
+      // 시퀀스 replay 중 displayView가 임시로 prev(playing)로 돌아가는 경우 reset 방지
+      if (!sequenceBusy) {
+        endedTriggeredRef.current = false;
+        endedTimersRef.current.forEach(clearTimeout);
+        endedTimersRef.current = [];
+      }
       return;
     }
     if (animationPhase !== 'idle' || sequenceBusy || endedTriggeredRef.current) return;
@@ -267,7 +275,6 @@ export function GameView({
     const trigger = useEventOverlayStore.getState().trigger;
     const stoppedBy = displayView.stoppedByUserId;
     const isOpponentStop = stoppedBy && stoppedBy !== displayView.myUserId;
-    const timers: ReturnType<typeof setTimeout>[] = [];
 
     let t = 0;
 
@@ -278,14 +285,13 @@ export function GameView({
       t += 2000;
     }
 
-    // 게임 종료 이펙트
+    const timers: ReturnType<typeof setTimeout>[] = [];
     timers.push(setTimeout(() => trigger('game-over'), t));
-    t += 2000;
-
-    // 모달 발화
+    t += 2200 + 2000; // 이펙트(2.2s) 끝난 후 2초 대기
     timers.push(setTimeout(() => onEndedReadyRef.current?.(), t));
 
-    return () => timers.forEach(clearTimeout);
+    endedTimersRef.current = timers;
+    // cleanup 없음 — dependency 변경 시 타이머 유지. phase !== 'ended' 전환 시만 취소.
   }, [displayView.phase, animationPhase, sequenceBusy, displayView.stoppedByUserId, displayView.myUserId]);
 
   function handlePlayCardWithPeek(cardId: string) {

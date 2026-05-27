@@ -39,7 +39,7 @@ describe('calculateScore — 광', () => {
     ).toBe(4);
   });
 
-  it('광 4장 (비광 포함) = 2점', () => {
+  it('광 4장 (비광 포함) = 4점', () => {
     expect(
       calculateScore([
         card('m01-gwang'),
@@ -47,7 +47,7 @@ describe('calculateScore — 광', () => {
         card('m08-gwang'),
         card('m12-gwang'),
       ]).gwang,
-    ).toBe(2);
+    ).toBe(4);
   });
 
   it('광 5장 = 15점 (비광 무관)', () => {

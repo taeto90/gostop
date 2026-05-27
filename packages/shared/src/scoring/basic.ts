@@ -73,7 +73,7 @@ export function calculateScore(
   const hasBigwang = gwangCards.some((c) => c.isBigwang);
   const gwangCount = gwangCards.length;
   if (gwangCount === 5) gwang = 15;
-  else if (gwangCount === 4) gwang = hasBigwang ? 2 : 4;
+  else if (gwangCount === 4) gwang = 4;
   else if (gwangCount === 3) gwang = hasBigwang ? 2 : 3;
   // 광 2장 이하는 0점
 

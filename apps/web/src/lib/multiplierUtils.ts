@@ -1,9 +1,15 @@
 import { calculateScore, type Card, type PlayerStateView } from '@gostop/shared';
 
-/** 피 카드 배열의 표시용 가치 합계 (쌍피=2, 쓰리피=3, 일반=1). */
-export function piValue(cards: Card[]): number {
+/** 피 카드 배열의 표시용 가치 합계 (쌍피=2, 쓰리피=3, 일반=1).
+ *  nineYeolAsSsangPi=true면 m09-yeol을 쌍피(2)로 계산. */
+export function piValue(cards: Card[], nineYeolAsSsangPi?: boolean): number {
   return cards.reduce(
-    (sum, c) => (c.bonusPiValue === 3 ? sum + 3 : c.isSsangPi ? sum + 2 : sum + 1),
+    (sum, c) => {
+      if (c.bonusPiValue === 3) return sum + 3;
+      if (c.isSsangPi) return sum + 2;
+      if (nineYeolAsSsangPi && c.id === 'm09-yeol') return sum + 2;
+      return sum + 1;
+    },
     0,
   );
 }

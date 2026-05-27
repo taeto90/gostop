@@ -142,26 +142,29 @@ export function useMultiTurnSequence(
       return;
     }
 
-    // hand/drawn diff 검사 — prebuild view도 trigger 가능 (turnSeq 무관)
-    // 폭탄 시 3장, 일반 시 1장. fallback (AI history)은 1장.
-    const handCards = findHandCardsRemoved(last, incoming);
-    const handCardId = handCards[0]?.id ?? null;
-    const drawnCardId =
-      incoming.lastTurnSpecials?.drawnCardId ??
-      findDrawnCard(last, incoming, handCardId);
-    if (!handCardId && !drawnCardId) {
-      // 변화 없음 (또는 collected diff만) → 즉시 swap (Phase 4 layoutId 자동)
+    // 이미 처리된 동일 상태 재진입 방지 (heldViewRef 해제 등)
+    if (last.turnSeq === incoming.turnSeq && last.deckCount === incoming.deckCount) {
       setDisplayView(incoming);
       lastProcessedRef.current = incoming;
       return;
     }
 
-    // 이미 진행 중이면 pending에 저장 — 끝나면 자동 처리
+    // hand/drawn diff 검사 — prebuild view도 trigger 가능 (turnSeq 무관)
+    // 폭탄 시 3장, 일반 시 1장. fallback (AI history)은 1장.
+    const handCards = findHandCardsRemoved(last, incoming);
+    const handCardId = handCards[0]?.id ?? null;
+    const serverDrawnId = incoming.lastTurnSpecials?.drawnCardId;
+    const drawnCardId = serverDrawnId ?? findDrawnCard(last, incoming, handCardId);
+    if (!handCardId && !drawnCardId) {
+      setDisplayView(incoming);
+      lastProcessedRef.current = incoming;
+      return;
+    }
+
     if (processingRef.current) {
       pendingViewRef.current = incoming;
       return;
     }
-
     void runSequenceLoop(incoming);
     // view 객체 자체 의존성 — turnSeq/flags/prebuild 변화 모두 감지
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -44,7 +44,7 @@ export function CollectedStrip({
       {(['gwang', 'yeol', 'ddi', 'pi'] as const).map((kind) =>
         groups[kind].length > 0 ? (
           <div key={kind} className="flex items-center gap-1">
-            <KindLabel kind={kind} count={kind === 'pi' ? piValue(groups[kind]) : groups[kind].length} />
+            <KindLabel kind={kind} count={kind === 'pi' ? piValue(groups[kind], nineYeolAsSsangPi) : groups[kind].length} />
             <div className={density === 'compact' ? 'flex -space-x-3' : 'flex -space-x-2'}>
               {groups[kind].map((c) => (
                 <Card key={c.id} card={c} size={size} layoutId={c.id} />

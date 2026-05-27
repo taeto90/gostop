@@ -72,7 +72,7 @@ export function MobileCollected({
             key={kind}
             kind={kind}
             cards={groups[kind]}
-            displayCount={kind === 'pi' ? piValue(groups[kind]) : groups[kind].length}
+            displayCount={kind === 'pi' ? piValue(groups[kind], nineYeolAsSsangPi) : groups[kind].length}
             cardW={cardW}
             isCompact={isCompact}
           />
