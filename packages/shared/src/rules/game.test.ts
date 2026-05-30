@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { createBombCard, createJokerCard, getCardById } from '../cards/deck.ts';
+import {
+  createBombCard,
+  createBonusPiCard,
+  createJokerCard,
+  getCardById,
+} from '../cards/deck.ts';
 import { dealNewGame, executeTurn, isGameOver, nextTurnIndex } from './game.ts';
 import type { Card } from '../types/card.ts';
 
@@ -511,5 +516,71 @@ describe('executeTurn — 정통 룰 (Image #20 표 케이스)', () => {
     expect(result.specials.recoveredMonth).toBe(5);
     expect(result.specials.isOwnRecover).toBe(false);
     expect(result.newState.collected.filter((c) => c.month === 5)).toHaveLength(4);
+  });
+});
+
+describe('보너스피 손패 보충 룰 (사용자 변형)', () => {
+  it('손에서 보너스피 냄 → 보너스피는 딴패, 더미 일반패는 손패로 (바닥 X)', () => {
+    const bonusPi = createBonusPiCard(2);
+    const state = {
+      hand: [bonusPi],
+      collected: [],
+      field: [card('m03-pi-1')],
+      deck: [card('m07-pi-1')], // 더미 top = 일반패
+    };
+    const result = executeTurn(state, bonusPi.id, { allowSpecials: true });
+
+    // 보너스피는 딴패(collected)로
+    expect(result.newState.collected.some((c) => c.id === bonusPi.id)).toBe(true);
+    // 더미 일반패는 손패로 (바닥 X)
+    expect(result.newState.hand.some((c) => c.id === 'm07-pi-1')).toBe(true);
+    expect(result.newState.field.some((c) => c.id === 'm07-pi-1')).toBe(false);
+    // 바닥은 원래대로 (m03-pi-1만)
+    expect(result.newState.field).toHaveLength(1);
+    // 마스킹/애니메이션 플래그
+    expect(result.specials.drawnToHand).toBe(true);
+    expect(result.specials.drawnCardId).toBe('m07-pi-1');
+    // 보너스피 1개 → stealPi 카운트
+    expect(result.specials.bonusPiCollected).toBe(1);
+  });
+
+  it('손 보너스피 → 더미 체인(보너스피 또 나옴) → 일반패 손패로, 누적 카운트', () => {
+    const handBonus = createBonusPiCard(2);
+    const drawBonus = createBonusPiCard(3);
+    const state = {
+      hand: [handBonus],
+      collected: [],
+      field: [card('m03-pi-1')],
+      deck: [drawBonus, card('m07-pi-1')], // 보너스피 → 일반패
+    };
+    const result = executeTurn(state, handBonus.id, { allowSpecials: true });
+
+    // 손 보너스피 + 더미 보너스피 모두 딴패
+    expect(result.newState.collected.some((c) => c.id === handBonus.id)).toBe(true);
+    expect(result.newState.collected.some((c) => c.id === drawBonus.id)).toBe(true);
+    // 최종 일반패는 손패로
+    expect(result.newState.hand.some((c) => c.id === 'm07-pi-1')).toBe(true);
+    // 보너스피 2개 누적 → stealPi 2
+    expect(result.specials.bonusPiCollected).toBe(2);
+    expect(result.specials.drawnToHand).toBe(true);
+  });
+
+  it('조커는 보충 룰 미적용 — 더미 카드 바닥 플레이 (기존 동작)', () => {
+    const joker = createJokerCard();
+    const state = {
+      hand: [joker],
+      collected: [],
+      field: [card('m03-pi-1')],
+      deck: [card('m07-pi-1')],
+    };
+    const result = executeTurn(state, joker.id, { allowSpecials: true });
+
+    // 조커는 딴패, 더미 일반패는 바닥으로 (손패 X)
+    expect(result.newState.collected.some((c) => c.id === joker.id)).toBe(true);
+    expect(result.newState.field.some((c) => c.id === 'm07-pi-1')).toBe(true);
+    expect(result.newState.hand.some((c) => c.id === 'm07-pi-1')).toBe(false);
+    expect(result.specials.drawnToHand).toBeUndefined();
+    // 조커는 stealPi 카운트 X
+    expect(result.specials.bonusPiCollected).toBe(0);
   });
 });

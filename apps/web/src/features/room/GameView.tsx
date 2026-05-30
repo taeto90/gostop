@@ -109,6 +109,8 @@ export function GameView({
     | null
   >(null);
   const [scoreDetailPlayer, setScoreDetailPlayer] = useState<import('@gostop/shared').PlayerStateView | null>(null);
+  // 국준 끗/쌍피 선택 즉시 시각 반영용 로컬 override (displayView 지연 우회). 새 게임 시 reset.
+  const [localNineYeolOverride, setLocalNineYeolOverride] = useState<boolean | null>(null);
   const [rootRef, { width: rootW, height: rootH }] = useElementSize<HTMLDivElement>();
   const isCompact = isCompactWidth(rootW);
   // 손패 영역 높이 — 화면 height 비율 기반 (lib/layoutConstants 에서 조절).
@@ -216,7 +218,18 @@ export function GameView({
   const myPlayerRaw = view.players.find((p) => p.userId === view.myUserId);
   const nineYeol = useNineYeolDecision(view, myPlayerRaw);
   nineYeolPendingRef.current = nineYeol.open;
-  const my9YeolAsSsangPi = myPlayer?.flags?.nineYeolAsSsangPi ?? false;
+  // 모달 선택 직후 displayView는 아직 이전 turn(국준 획득 시점, flag=false)에 멈춰있어
+  // 서버 flag 반영이 다음 turn 애니메이션 완료까지 지연됨. 로컬 override로 즉시 시각 반영.
+  const handleNineYeolPick = (asSsangPi: boolean) => {
+    setLocalNineYeolOverride(asSsangPi);
+    return nineYeol.pick(asSsangPi);
+  };
+  const my9YeolAsSsangPi =
+    localNineYeolOverride ?? myPlayer?.flags?.nineYeolAsSsangPi ?? false;
+  // 새 게임 시작 시 override reset (이전 판 선택값 잔존 방지)
+  useEffect(() => {
+    setLocalNineYeolOverride(null);
+  }, [view.gameInstanceId]);
 
   // 쇼당 선언 — 3인+ 모드, 본인 턴에만 활성화 (친구간 협의 룰)
   const canDeclareShodang = isMyTurn && effectiveView.players.length >= 3;
@@ -906,7 +919,7 @@ export function GameView({
             animationPhase === 'idle' &&
             pendingMultiPick === null
           }
-          onPick={nineYeol.pick}
+          onPick={handleNineYeolPick}
         />
 
         <ScoreDetailModal

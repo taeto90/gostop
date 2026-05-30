@@ -69,6 +69,48 @@ export function buildPhase3View(
 }
 
 /**
+ * 보너스피 전용 시퀀스용 — incoming에서 더미 카드(drawnCardId)를 본인 손패에서 제거한 view.
+ * (보너스피 딴패 이동 + 상대 피 뺏김은 반영, 더미 카드는 아직 더미에 있는 상태)
+ */
+export function buildBonusPiBeforeDraw(
+  incoming: RoomView,
+  drawnCardId: string | null,
+): RoomView {
+  if (drawnCardId === null) return incoming;
+  return {
+    ...incoming,
+    players: incoming.players.map((p) =>
+      p.userId === incoming.myUserId
+        ? { ...p, hand: (p.hand ?? []).filter((c) => c.id !== drawnCardId) }
+        : p,
+    ),
+    deckCount: incoming.deckCount + 1,
+  };
+}
+
+/**
+ * stealPi 역산 — 빼앗은 피 카드를 상대 collected로 되돌린 view.
+ * 보너스피 전용 시퀀스에서 "보너스피만 딴패로, 상대 피는 아직 안 뺏긴" 중간 상태 생성용.
+ */
+export function revertStealPi(
+  view: RoomView,
+  steals: { from: string; to: string; cardId: string }[] | undefined,
+): RoomView {
+  if (!steals || steals.length === 0) return view;
+  const players = view.players.map((p) => ({ ...p, collected: [...p.collected] }));
+  for (const s of steals) {
+    const to = players.find((p) => p.userId === s.to);
+    const from = players.find((p) => p.userId === s.from);
+    if (!to) continue;
+    const card = to.collected.find((c) => c.id === s.cardId);
+    if (!card) continue;
+    to.collected = to.collected.filter((c) => c.id !== s.cardId);
+    if (from) from.collected = [...from.collected, card];
+  }
+  return { ...view, players };
+}
+
+/**
  * AI/상대 turn Phase 1-A 시점에 사용할 view — turnUserId player의 hand에 handCard 1장
  * fake로 mount. OpponentSlot이 그 카드를 layoutId source로 표시 → Phase 1-B에서
  * phase1View로 swap 시 hand에서 빠지고 field에 추가되어 layoutId 비행.

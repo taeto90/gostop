@@ -16,6 +16,12 @@ export interface PlayerFlags {
    * (브라우저 닫음/네트워크 끊김 등 long-AFK player 게임 진행 가속)
    */
   consecutiveAutoTurns?: number;
+  /**
+   * 직전 GO 선언 시점의 점수 (rules-final.md §5).
+   * 2고+는 직전 고 점수보다 1점 이상 올라야 다시 GO/STOP 선택 가능.
+   * 첫 고 전까지는 undefined.
+   */
+  lastGoScore?: number;
 }
 
 export interface Player {

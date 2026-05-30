@@ -13,12 +13,14 @@ import { LobbyActionCards } from './LobbyActionCards.tsx';
 import { LobbyResumeCard } from './LobbyResumeCard.tsx';
 import { LobbyRoomList } from './LobbyRoomList.tsx';
 import { PasswordPromptModal } from './PasswordPromptModal.tsx';
+import { SpecialCardPreviewModal } from './SpecialCardPreviewModal.tsx';
 
 export function Lobby() {
   const profile = useSessionStore((s) => s.profile);
   const navigate = useNavigate();
   const [helpOpen, setHelpOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [cardPreviewOpen, setCardPreviewOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   // 비밀방 입장 시 비밀번호 입력 모달 — 어떤 방인지 + 관전 여부 + 에러 메시지
@@ -167,11 +169,22 @@ export function Lobby() {
           >
             🎴 결과 데모
           </button>
+          <span>·</span>
+          <button
+            onClick={() => setCardPreviewOpen(true)}
+            className="hover:text-amber-300"
+          >
+            🃏 특수카드 보기
+          </button>
         </div>
       </div>
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
       <HistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      <SpecialCardPreviewModal
+        open={cardPreviewOpen}
+        onClose={() => setCardPreviewOpen(false)}
+      />
       <PasswordPromptModal
         open={passwordPrompt !== null}
         hostNickname={passwordPrompt?.room.hostNickname ?? ''}

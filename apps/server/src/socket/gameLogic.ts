@@ -5,8 +5,14 @@
  * - 모든 함수는 mutation in-place (Room 객체 직접 수정)
  */
 
-import type { AiDifficulty, Card, Player, Room } from '@gostop/shared';
-import { dealNewGame, detectChongtong, detectShakesAndBombs, PRESETS } from '@gostop/shared';
+import type { AiDifficulty, Card, Player, Room, TurnSpecials } from '@gostop/shared';
+import {
+  awardBombBonusCards,
+  dealNewGame,
+  detectChongtong,
+  detectShakesAndBombs,
+  PRESETS,
+} from '@gostop/shared';
 import { startGameLog } from './gameLog.ts';
 
 /** AI 봇 userId prefix — 일반 사용자와 구분 */
@@ -271,6 +277,16 @@ export function reconvertSpectatorsToPlayers(room: Room): void {
  * 보너스피(투피/쓰리피) — 모든 상대 각각으로부터 perEach 장씩 뺏기.
  * 일반 stealPi와 구분: 일반은 "전체 count장을 한 명부터 차례로", 보너스피는 "각 상대로부터 균등".
  */
+/**
+ * 폭탄 발동 시 공통 처리 — bombs 카운트 +1 + 보너스 카드 2장 손패 추가.
+ * turnFlow(사람) / aiTurn(AI) 공통 (rules-final.md §4).
+ */
+export function applyBombAward(player: Player, specials: TurnSpecials): void {
+  if (!specials.bomb) return;
+  player.flags.bombs += 1;
+  player.hand = awardBombBonusCards(player.hand);
+}
+
 export function stealPiOneFromEachOpponent(
   room: Room,
   fromUserId: string,

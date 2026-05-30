@@ -57,6 +57,10 @@ export const COLLECT_STAGGER = 0.15;
 export const DELAY_AFTER_HAND = 0.75;
 /** Phase 3 끝 → Phase 4 시작 (점수판 비행 전 대기) */
 export const DELAY_AFTER_FLIP = 1.0;
+/** 보너스피 전용 시퀀스 단계 사이 짧은 대기 (확대→날아감, 날아감→피뺏기) */
+export const DELAY_BONUS_PI_SHORT = 0.5;
+/** 보너스피 전용 시퀀스 단계 사이 긴 대기 (피뺏기→더미 보충) */
+export const DELAY_BONUS_PI_STEP = 1.0;
 /** @deprecated INTER_PHASE_DELAY — 하위 호환. 새 코드는 DELAY_AFTER_HAND / DELAY_AFTER_FLIP 사용 */
 export const INTER_PHASE_DELAY = DELAY_AFTER_HAND;
 

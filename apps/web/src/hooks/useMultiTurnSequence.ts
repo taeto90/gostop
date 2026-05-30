@@ -11,17 +11,21 @@ import {
   HAND_PEAK_DURATION,
   DELAY_AFTER_HAND,
   DELAY_AFTER_FLIP,
+  DELAY_BONUS_PI_SHORT,
+  DELAY_BONUS_PI_STEP,
   SCALE_PEAK_DURATION,
   sec,
 } from '../lib/animationTiming.ts';
 import type { Card } from '@gostop/shared';
 import {
+  buildBonusPiBeforeDraw,
   buildPhase1View,
   buildPhase1ViewWithFakeHand,
   buildPhase3View,
   buildPhase4View,
   findDrawnCard,
   findHandCardsRemoved,
+  revertStealPi,
 } from './turnSequence/phaseViews.ts';
 import {
   makePhaseTag,
@@ -71,7 +75,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  *   Phase 4:  진짜 view swap          (FLY_DURATION_TO_COLLECTED, collected stagger)
  *
  * **sequential 보장**: 각 phase가 await sleep으로 완료 보장 후 다음 phase 진입.
- * **큐잉**: 시퀀스 진행 중 새 broadcast 도착 시 pendingViewRef에 저장 → 끝난 후 자동 처리.
+ * **큐잉**: 시퀀스 진행 중 새 broadcast 도착 시 pendingQueueRef(배열)에 저장 → 끝난 후 순서대로 처리.
  */
 export function useMultiTurnSequence(
   view: RoomView,
@@ -88,7 +92,8 @@ export function useMultiTurnSequence(
   const [sequenceBusy, setSequenceBusy] = useState(false);
 
   const processingRef = useRef(false);
-  const pendingViewRef = useRef<RoomView | null>(null);
+  // 빠른 연속 broadcast 큐 — 단일 슬롯이면 중간 turn 손실되어 애니메이션 스킵됨.
+  const pendingQueueRef = useRef<RoomView[]>([]);
   const lastProcessedRef = useRef<RoomView>(view);
   const stepResolverRef = useRef<(() => void) | null>(null);
   // 새 게임 인스턴스 시작 시 진행 중 sequence 중단 신호 — 각 await 후 체크.
@@ -138,7 +143,7 @@ export function useMultiTurnSequence(
       setCurrentPhase('idle');
       setDisplayView(incoming);
       lastProcessedRef.current = incoming;
-      pendingViewRef.current = null;
+      pendingQueueRef.current = [];
       return;
     }
 
@@ -162,7 +167,7 @@ export function useMultiTurnSequence(
     }
 
     if (processingRef.current) {
-      pendingViewRef.current = incoming;
+      pendingQueueRef.current.push(incoming);
       return;
     }
     void runSequenceLoop(incoming);
@@ -182,8 +187,7 @@ export function useMultiTurnSequence(
       await runOneSequence(from, to);
       if (abortRef.current) break;
       lastProcessedRef.current = to;
-      target = pendingViewRef.current;
-      pendingViewRef.current = null;
+      target = pendingQueueRef.current.shift() ?? null;
     }
     processingRef.current = false;
     setSequenceBusy(false);
@@ -218,6 +222,18 @@ export function useMultiTurnSequence(
       tag,
       `▶ seq START — handCards=${handCards.map((c) => c.id).join(',') || 'none'}, drawnCard=${drawnCardId ?? 'none'}`,
     );
+
+    // 보너스피 손패 보충 룰 — 4-phase 대신 전용 단순 시퀀스.
+    // (1) 손패→딴패 보너스피 (2) 상대 피 뺏기 (3) 더미 카드 손패로. '착' 소리 X.
+    const drawnToHand = incoming.lastTurnSpecials?.drawnToHand === true;
+    if (drawnToHand) {
+      await runBonusPiSequence(tag, prev, incoming, handCardId, drawnCardId, isMyTurn);
+      if (abortRef.current) return;
+      plog(tag, `■ 보너스피 seq END → idle`);
+      setCurrentPhase('idle');
+      await sleep(0);
+      return;
+    }
 
     const phase1View =
       handCards.length === 0
@@ -434,6 +450,66 @@ export function useMultiTurnSequence(
     } else {
       // 빼앗기 없으면 그냥 incoming swap (phase4View와 동일하지만 안전)
       setDisplayView(incoming);
+    }
+  }
+
+  /**
+   * 보너스피 전용 시퀀스 — 4-phase 미사용. '착' 사운드 X.
+   *   (0) 손패 확대 → 0.5초
+   *   (1) 보너스피 손패→딴패 비행 → 0.5초
+   *   (2) 상대 피 뺏기 비행 → 1초
+   *   (3) 더미 카드 손패로 보충
+   * drawnToHand=true일 때만 호출. 더미 카드는 손패로 들어가 상대에겐 마스킹됨.
+   */
+  async function runBonusPiSequence(
+    tag: string,
+    prev: RoomView,
+    incoming: RoomView,
+    handCardId: string | null,
+    drawnCardId: string | null,
+    isMyTurn: boolean,
+  ): Promise<void> {
+    plog(tag, `▶ 보너스피 전용 시퀀스 (4-phase 미사용, 무음)`);
+    const steals = incoming.lastTurnSpecials?.stealPiCards ?? [];
+    // 더미 카드를 손패에서 뺀 상태 (보너스피 딴패 + 상대 피 뺏김 반영)
+    const viewWithSteal = buildBonusPiBeforeDraw(incoming, drawnCardId);
+    // 위에서 stealPi까지 역산 (보너스피만 딴패, 상대 피 원래대로)
+    const viewBonusOnly = revertStealPi(viewWithSteal, steals);
+
+    // (0) 보너스피 손패에서 확대 — 본인 turn만 (상대 손패는 마스킹이라 확대 X)
+    setCurrentPhase('phase1');
+    setDisplayView(prev);
+    if (isMyTurn && handCardId) setPeakingHandCardId(handCardId);
+    await sleep(sec(HAND_PEAK_DURATION));
+    if (abortRef.current) return;
+    setPeakingHandCardId(null);
+    await sleep(sec(DELAY_BONUS_PI_SHORT));
+    if (abortRef.current) return;
+
+    // (1) 보너스피 손패→딴패 비행 (상대 피는 아직)
+    setCurrentPhase('phase4');
+    setDisplayView(viewBonusOnly);
+    await sleep(sec(FLY_DURATION_TO_COLLECTED));
+    if (abortRef.current) return;
+    plog(tag, `  ▷ 보너스피 딴패 이동 완료`);
+
+    // (2) 상대 피 뺏기 비행
+    if (steals.length > 0) {
+      await sleep(sec(DELAY_BONUS_PI_SHORT));
+      if (abortRef.current) return;
+      setDisplayView(viewWithSteal);
+      await sleep(sec(FLY_DURATION_TO_COLLECTED));
+      if (abortRef.current) return;
+      plog(tag, `  ▷ 상대 피 뺏기 완료`);
+    }
+
+    // (3) 더미 카드 손패로 보충
+    if (drawnCardId !== null) {
+      await sleep(sec(DELAY_BONUS_PI_STEP));
+      if (abortRef.current) return;
+      setDisplayView(incoming);
+      await sleep(sec(FLY_DURATION_HAND_TO_FIELD));
+      plog(tag, `  ▷ 더미 카드 손패 보충 완료`);
     }
   }
 

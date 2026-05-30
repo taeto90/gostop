@@ -332,6 +332,11 @@ export interface TurnSpecials {
   stealPiCards?: { from: string; to: string; cardId: string }[];
   /** 더미에서 뒤집힌 카드 ID — 클라 Phase 3 애니메이션에서 직접 사용 (diff 추론 불필요) */
   drawnCardId?: string;
+  /**
+   * 더미에서 뒤집힌 카드가 바닥이 아니라 본인 손패로 들어갔는지 (보너스피 손패 보충 룰).
+   * true면 클라가 더미→손패 비행으로 처리 + 상대에겐 마스킹.
+   */
+  drawnToHand?: boolean;
 }
 
 export interface TurnResult {
@@ -488,6 +493,31 @@ export function executeTurn(
     }
     const drawnCard = draw.drawnCard;
     specials.drawnCardId = drawnCard.id;
+
+    // 보너스피 손패 보충 룰 (사용자 변형) — 손에서 보너스피를 냈으면 더미 최종 일반패를
+    // 바닥에 깔지 않고 내 손패로 가져옴. 상대는 손패 마스킹으로 그 패를 모름. 손패 수 유지.
+    // (조커는 아래 일반 처리 — 바닥 플레이.)
+    if (handCard.isBonusPi) {
+      specials.drawnToHand = true;
+      events.push({
+        step: 'draw',
+        card: drawnCard,
+        result: 'placed',
+        collectedCards: [],
+        fieldAfter: field,
+      });
+      return {
+        newState: {
+          hand: [...newHand, drawnCard],
+          collected,
+          field,
+          deck: draw.newDeck,
+        },
+        events,
+        specials,
+      };
+    }
+
     const drawResult = playCard(drawnCard, field, {
       targetCardId: options.targetAfterDraw,
       allowPpeok,

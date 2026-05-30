@@ -1,6 +1,5 @@
 import type { Card, Player, Room, TurnSpecials } from '@gostop/shared';
 import {
-  awardBombBonusCards,
   calculateScore,
   simulateOrNeedsSelection,
   type SimulateTurnResult,
@@ -9,6 +8,7 @@ import type { RoomStore } from '../rooms/RoomStore.ts';
 import { findPlayer } from '../rooms/playerOps.ts';
 import { type IO, broadcastRoomState } from './broadcast.ts';
 import {
+  applyBombAward,
   isAIBot,
   stealPiFromOpponents,
   stealPiOneFromEachOpponent,
@@ -71,29 +71,9 @@ export function playCardForPlayer(
   if (!player) return { ok: false, error: '플레이어를 찾을 수 없음' };
 
   const isLastTurn = player.hand.length === 1;
-  // 디버그 — 폭탄 발동 안 되는 버그 추적 (rules-final.md §4)
-  const _handCard = player.hand.find((c) => c.id === opts.cardId);
-  if (_handCard) {
-    const sameMonth = player.hand.filter((c) => c.month === _handCard.month);
-    const fieldSameMonth = room.game.field.filter((c) => c.month === _handCard.month);
-    const shookMonths = player.flags.shookMonths ?? [];
-    // eslint-disable-next-line no-console
-    console.log('[server playCard]', {
-      playerId,
-      cardId: opts.cardId,
-      handCardMonth: _handCard.month,
-      sameMonthInHand: sameMonth.length,
-      fieldSameMonthCount: fieldSameMonth.length,
-      shookMonths,
-      monthShaken: shookMonths.includes(_handCard.month as never),
-      declineBomb: opts.declineBomb,
-      isBombShouldFire:
-        sameMonth.length >= 3 &&
-        fieldSameMonth.length === 1 &&
-        shookMonths.includes(_handCard.month as never) &&
-        !opts.declineBomb,
-    });
-  }
+  // 손에서 낸 카드가 보너스피인지 — 보너스피는 턴 유지 (한 번 더 냄, 손패 보충 룰)
+  const playedBonusPi =
+    player.hand.find((c) => c.id === opts.cardId)?.isBonusPi === true;
   // dev 로그: 액션 직전 state snapshot
   const prevTurnPlayerId = room.game.turnPlayerId;
   const prevCounts = captureCounts(room);
@@ -157,10 +137,7 @@ export function playCardForPlayer(
     result.specials,
   );
 
-  if (result.specials.bomb) {
-    player.flags.bombs += 1;
-    player.hand = awardBombBonusCards(player.hand);
-  }
+  applyBombAward(player, result.specials);
 
   room.lastTurnSpecials = result.specials;
   room.lastTurnActorUserId = playerId;
@@ -189,16 +166,28 @@ export function playCardForPlayer(
   // 본인 턴 종료 후 winScore 도달 검사 (rules-final.md §5).
   // 본인 hand 남아있고 + ended 아니면 → go/stop 선택 대기, turn 이동 X.
   // AI 봇은 progressAITurnIfAny에서 자동 결정.
+  //
+  // 고 조건:
+  //   첫 고 — winScore 이상 도달
+  //   2고+ — 직전 고 점수보다 1점 이상 올라야 (lastGoScore 비교)
   const winScore = room.rules.winScore;
   const myScore = calculateScore(player.collected, {
     nineYeolAsSsangPi: player.flags.nineYeolAsSsangPi ?? false,
     allowGukJoon: room.rules.allowGukJoon,
   });
-  const reachedWin = !ended && player.hand.length > 0 && myScore.total >= winScore;
+  const goThreshold =
+    player.goCount > 0
+      ? Math.max(winScore, (player.flags.lastGoScore ?? 0) + 1)
+      : winScore;
+  const reachedWin =
+    !ended && player.hand.length > 0 && myScore.total >= goThreshold;
 
   if (reachedWin) {
     room.pendingGoStop = { playerId, score: myScore.total };
     // turn 이동 X — 같은 player가 go 결정 후 다음 턴 진행
+  } else if (playedBonusPi && !ended) {
+    // 보너스피 — 손패 보충 후 같은 player가 한 번 더 (턴 이동 X)
+    room.pendingGoStop = null;
   } else {
     // 다음 turn
     const currentIndex = room.players.findIndex((p) => p.id === playerId);
@@ -280,6 +269,8 @@ export function applyGo(
   if (!player) return;
 
   player.goCount += 1;
+  // 이번 고 시점 점수 기록 — 다음 고는 이보다 1점 이상 올라야 가능 (rules-final.md §5)
+  player.flags.lastGoScore = room.pendingGoStop?.score ?? player.flags.lastGoScore;
   room.pendingGoStop = null;
 
   const currentIndex = room.players.findIndex((p) => p.id === playerId);

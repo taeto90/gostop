@@ -8,7 +8,6 @@
 
 import type { Player, Room } from '@gostop/shared';
 import {
-  awardBombBonusCards,
   calculateScore,
   chooseAiCard,
   executeTurn,
@@ -18,7 +17,7 @@ import {
 import type { RoomStore } from '../rooms/RoomStore.ts';
 import { findPlayer } from '../rooms/playerOps.ts';
 import { broadcastRoomState, type IO } from './broadcast.ts';
-import { isAIBot, stealPiFromOpponents } from './gameLogic.ts';
+import { applyBombAward, isAIBot, stealPiFromOpponents } from './gameLogic.ts';
 import { applyGo, applyStop } from './turnFlow.ts';
 import { captureCounts, endGameLog, logPlayCard } from './gameLog.ts';
 
@@ -127,6 +126,9 @@ export function progressAITurnIfAny(io: IO, room: Room, store: RoomStore): void 
       const prevCounts = captureCounts(room);
 
       const isLastTurn = ai.hand.length === 1;
+      // 손에서 낸 카드가 보너스피면 턴 유지 (한 번 더 — 손패 보충 룰)
+      const playedBonusPi =
+        ai.hand.find((c) => c.id === cardId)?.isBonusPi === true;
       const result = executeTurn(
         {
           hand: ai.hand,
@@ -159,10 +161,7 @@ export function progressAITurnIfAny(io: IO, room: Room, store: RoomStore): void 
       if (result.specials.recoveredMonth !== undefined) {
         delete room.stuckOwners[result.specials.recoveredMonth];
       }
-      if (result.specials.bomb) {
-        ai.flags.bombs += 1;
-        ai.hand = awardBombBonusCards(ai.hand);
-      }
+      applyBombAward(ai, result.specials);
 
       // 클라 EventOverlay 발화용 — 마지막 turn specials broadcast에 포함
       room.lastTurnSpecials = result.specials;
@@ -218,10 +217,12 @@ export function progressAITurnIfAny(io: IO, room: Room, store: RoomStore): void 
           broadcastRoomState(io, room);
         }
       } else {
-        // 다음 턴
-        const idx = room.players.findIndex((p) => p.id === turnPlayerId);
-        const nextIdx = (idx + 1) % room.players.length;
-        room.game.turnPlayerId = room.players[nextIdx]!.id;
+        // 보너스피면 턴 유지 (한 번 더), 아니면 다음 턴
+        if (!(playedBonusPi && !ended)) {
+          const idx = room.players.findIndex((p) => p.id === turnPlayerId);
+          const nextIdx = (idx + 1) % room.players.length;
+          room.game.turnPlayerId = room.players[nextIdx]!.id;
+        }
         // dev 로그
         logPlayCard(
           room,
@@ -234,7 +235,7 @@ export function progressAITurnIfAny(io: IO, room: Room, store: RoomStore): void 
         );
         if (ended) endGameLog(room);
         broadcastRoomState(io, room);
-        // 다음 턴도 AI면 재귀
+        // 같은 AI가 보너스피로 턴 유지 → 재귀로 다시 진행. 다음 턴도 AI면 재귀.
         progressAITurnIfAny(io, room, store);
       }
     } catch (e) {
