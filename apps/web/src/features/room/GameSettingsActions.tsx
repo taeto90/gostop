@@ -22,31 +22,3 @@ export function HostRulesAction({ onOpenRules, hasPassword }: HostSectionProps) 
     </div>
   );
 }
-
-interface PlayerActionsProps {
-  canDeclareShodang: boolean;
-  onDeclareShodang: () => void;
-}
-
-export function PlayerActions({
-  canDeclareShodang,
-  onDeclareShodang,
-}: PlayerActionsProps) {
-  if (!canDeclareShodang) return null;
-  return (
-    <div className="flex flex-col gap-2">
-      <button
-        onClick={onDeclareShodang}
-        className="flex items-center justify-between rounded-lg border border-amber-400/60 bg-amber-500/10 px-3 py-2 text-sm text-amber-200 transition hover:bg-amber-500/20"
-      >
-        <span className="flex items-center gap-2">
-          <span className="text-base">🚫</span>
-          <span>
-            쇼당 선언 <span className="text-felt-400">(친구간 협의 룰)</span>
-          </span>
-        </span>
-        <span className="text-amber-300">→</span>
-      </button>
-    </div>
-  );
-}

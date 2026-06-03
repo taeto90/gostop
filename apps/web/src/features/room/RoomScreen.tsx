@@ -303,6 +303,39 @@ export function RoomScreen() {
     case 'playing':
     case 'go-stop-decision':
     case 'dealing':
+    case 'ended': {
+      // 비호스트가 ResultView 닫은 상태(ended+dismissed) → 대기 화면 (종료 후라 remount 무방)
+      if (view.phase === 'ended' && ended.dismissed) {
+        return (
+          <div className="flex h-full items-center justify-center bg-felt p-8">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-felt-100">🏁 게임 종료</div>
+              <div className="mt-2 text-sm text-felt-400">
+                호스트가 다음 판을 시작하기를 기다리는 중...
+              </div>
+              <div className="mt-4 flex justify-center gap-2">
+                <button
+                  onClick={ended.unDismiss}
+                  className="rounded bg-felt-800 px-4 py-2 text-sm hover:bg-felt-700"
+                >
+                  📊 결과 다시 보기
+                </button>
+                <button
+                  onClick={handleLeave}
+                  className="rounded bg-slate-700 px-4 py-2 text-sm font-semibold hover:bg-slate-600"
+                >
+                  🚪 로비로
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+      // ⚠️ playing↔ended(비dismissed)를 동일 JSX 트리 하나로 렌더 → React가 GameView를
+      // remount하지 않음 → 4-phase staging(lastProcessedRef)이 유지되어 AI 마지막 턴
+      // 애니메이션이 정상 재생됨. (이전엔 case별 별도 return이라 phase 전환 시 remount되어
+      // 종료 broadcast가 "첫 마운트 즉시 swap"으로 처리 → 애니 생략 + 종료 이펙트 중복 발화)
+      // onEndedReady는 phase==='ended'일 때만 GameView 내부에서 호출됨.
       return (
         <LiveKitGameRoom
           roomId={view.roomId}
@@ -315,9 +348,7 @@ export function RoomScreen() {
             view={view}
             onPlayCard={handlePlayCard}
             onLeave={handleLeave}
-            videoSidebar={
-              showVideoUI ? <VideoSidebar view={view} /> : undefined
-            }
+            videoSidebar={showVideoUI ? <VideoSidebar view={view} /> : undefined}
             videoMobileModalRender={
               showVideoUI
                 ? ({ open, onClose }) => (
@@ -326,66 +357,13 @@ export function RoomScreen() {
                 : undefined
             }
             mediaSettings={showVideoUI ? <MediaSettings voiceOnly={voiceOnly} /> : undefined}
+            onEndedReady={ended.triggerChoice}
           />
           {/* phase='waiting'에서 GameView 위에 컨트롤 모달 오버레이 */}
           {view.phase === 'waiting' && <RoomLobbyModal view={view} />}
         </LiveKitGameRoom>
       );
-    case 'ended':
-      // dismissed가 아니면 GameView 계속 mount — 4-phase staging 완료 후 onEndedReady에서
-      // ChoiceModal trigger. server phase='ended'가 곧장 와도 staging 안 끊김.
-      if (!ended.dismissed) {
-        return (
-          <LiveKitGameRoom
-            roomId={view.roomId}
-            userId={profile.userId}
-            nickname={profile.nickname}
-            enabled={videoEnabled}
-            voiceOnly={voiceOnly}
-          >
-            <GameView
-              view={view}
-              onPlayCard={handlePlayCard}
-              onLeave={handleLeave}
-              videoSidebar={showVideoUI ? <VideoSidebar view={view} /> : undefined}
-              videoMobileModalRender={
-                showVideoUI
-                  ? ({ open, onClose }) => (
-                      <VideoMobileModal view={view} open={open} onClose={onClose} />
-                    )
-                  : undefined
-              }
-              mediaSettings={showVideoUI ? <MediaSettings voiceOnly={voiceOnly} /> : undefined}
-              onEndedReady={ended.triggerChoice}
-            />
-          </LiveKitGameRoom>
-        );
-      }
-      // 비호스트가 ResultView 닫기 누른 상태. 호스트가 "🎮 게임으로" 누를 때까지 대기 화면.
-      return (
-        <div className="flex h-full items-center justify-center bg-felt p-8">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-felt-100">🏁 게임 종료</div>
-            <div className="mt-2 text-sm text-felt-400">
-              호스트가 다음 판을 시작하기를 기다리는 중...
-            </div>
-            <div className="mt-4 flex justify-center gap-2">
-              <button
-                onClick={ended.unDismiss}
-                className="rounded bg-felt-800 px-4 py-2 text-sm hover:bg-felt-700"
-              >
-                📊 결과 다시 보기
-              </button>
-              <button
-                onClick={handleLeave}
-                className="rounded bg-slate-700 px-4 py-2 text-sm font-semibold hover:bg-slate-600"
-              >
-                🚪 로비로
-              </button>
-            </div>
-          </div>
-        </div>
-      );
+    }
     default:
       return null;
   }

@@ -339,7 +339,7 @@ describe('executeTurn — 폭탄 카드 (보너스 카드)', () => {
 });
 
 describe('executeTurn — 조커 카드 (옵션 룰)', () => {
-  it('조커 카드 클릭 시 손패에서 제거되고 collected에 쌍피 가치로 추가 + 더미 1장 뒤집기', () => {
+  it('조커 카드 클릭 시 손패에서 제거 + collected 쌍피 가치 + 더미 1장 손패 보충', () => {
     const joker = createJokerCard();
     const drawnCard = card('m05-yeol');
     const result = executeTurn(
@@ -358,13 +358,15 @@ describe('executeTurn — 조커 카드 (옵션 룰)', () => {
     expect(collectedJoker).toBeDefined();
     expect(collectedJoker?.isSsangPi).toBe(true);
 
-    // 손패에서 제거됨
+    // 조커 제거 + 더미 일반패가 손패로 보충 (m01-pi-1 + m05-yeol = 2장)
     expect(result.newState.hand.find((c) => c.isJoker)).toBeUndefined();
-    expect(result.newState.hand).toHaveLength(1);
+    expect(result.newState.hand).toHaveLength(2);
+    expect(result.newState.hand.some((c) => c.id === drawnCard.id)).toBe(true);
+    expect(result.specials.drawnToHand).toBe(true);
 
-    // 더미 1장 뒤집기 진행 (m05-yeol은 바닥 매칭 X — placed)
+    // 더미 일반패는 손패로 — 바닥 미배치
     expect(result.newState.deck).toHaveLength(1);
-    expect(result.newState.field).toContainEqual(drawnCard);
+    expect(result.newState.field.some((c) => c.id === drawnCard.id)).toBe(false);
   });
 
   it('조커는 같은 월 그룹 집계에서 제외 — 폭탄/흔들기 판정에 영향 X', () => {
@@ -565,7 +567,7 @@ describe('보너스피 손패 보충 룰 (사용자 변형)', () => {
     expect(result.specials.drawnToHand).toBe(true);
   });
 
-  it('조커는 보충 룰 미적용 — 더미 카드 바닥 플레이 (기존 동작)', () => {
+  it('조커도 손패 보충 룰 적용 — 더미 일반패가 손패로, 단 stealPi는 X', () => {
     const joker = createJokerCard();
     const state = {
       hand: [joker],
@@ -575,12 +577,12 @@ describe('보너스피 손패 보충 룰 (사용자 변형)', () => {
     };
     const result = executeTurn(state, joker.id, { allowSpecials: true });
 
-    // 조커는 딴패, 더미 일반패는 바닥으로 (손패 X)
+    // 조커는 딴패, 더미 일반패는 손패로 (보너스피와 동일)
     expect(result.newState.collected.some((c) => c.id === joker.id)).toBe(true);
-    expect(result.newState.field.some((c) => c.id === 'm07-pi-1')).toBe(true);
-    expect(result.newState.hand.some((c) => c.id === 'm07-pi-1')).toBe(false);
-    expect(result.specials.drawnToHand).toBeUndefined();
-    // 조커는 stealPi 카운트 X
+    expect(result.newState.hand.some((c) => c.id === 'm07-pi-1')).toBe(true);
+    expect(result.newState.field.some((c) => c.id === 'm07-pi-1')).toBe(false);
+    expect(result.specials.drawnToHand).toBe(true);
+    // 보너스피와의 차이 — 조커는 stealPi 카운트 X
     expect(result.specials.bonusPiCollected).toBe(0);
   });
 });

@@ -46,7 +46,7 @@ import { MobileCollected } from './game-ui/MobileCollected.tsx';
 import { MyHand } from './game-ui/MyHand.tsx';
 import { OpponentSlot, type OpponentMenuActions } from './game-ui/OpponentSlot.tsx';
 import { RoomRulesModal } from './RoomRulesModal.tsx';
-import { HostRulesAction, PlayerActions } from './GameSettingsActions.tsx';
+import { HostRulesAction } from './GameSettingsActions.tsx';
 
 interface GameViewProps {
   view: RoomView;
@@ -72,6 +72,10 @@ interface GameViewProps {
    */
   onEndedReady?: () => void;
 }
+
+// 모듈 레벨 — GameView remount(StrictMode/phase 분기 전환)에도 살아남는 "종료 시퀀스 발화 가드".
+// key: `${roomId}:${gameInstanceId}`. 컴포넌트 useRef는 remount 시 리셋되어 중복 발화를 못 막음.
+const firedEndedKeys = new Set<string>();
 
 export function GameView({
   view,
@@ -183,20 +187,25 @@ export function GameView({
 
   // 상대(AI 포함) GO 감지 — goCount 증가 시 EventOverlay 발화
   const prevGoCountsRef = useRef<Record<string, number>>({});
+  const goSeededRef = useRef(false);
   useEffect(() => {
     if (animationPhase !== 'idle' || sequenceBusy) return;
-    const prev = prevGoCountsRef.current;
-    for (const p of displayView.players) {
-      if (p.userId === displayView.myUserId) continue;
-      const prevGo = prev[p.userId] ?? 0;
-      if (p.goCount > prevGo && p.goCount > 0) {
-        useEventOverlayStore.getState().trigger('go');
-      }
-    }
     const next: Record<string, number> = {};
     for (const p of displayView.players) next[p.userId] = p.goCount;
+    const prev = prevGoCountsRef.current;
+    // 발화 조건: 시드 완료(마운트 직후/remount 첫 실행은 시드만 → 기존 GO 오발화 방지)
+    // + phase==='playing' (종료/대기 phase는 발화 X → 모달 후·대기실 복귀 시 stale GO 차단)
+    if (goSeededRef.current && displayView.phase === 'playing') {
+      for (const p of displayView.players) {
+        if (p.userId === displayView.myUserId) continue;
+        if ((next[p.userId] ?? 0) > (prev[p.userId] ?? 0) && (next[p.userId] ?? 0) > 0) {
+          useEventOverlayStore.getState().trigger('go');
+        }
+      }
+    }
     prevGoCountsRef.current = next;
-  }, [displayView.players, animationPhase, sequenceBusy, displayView.myUserId]);
+    goSeededRef.current = true;
+  }, [displayView.players, displayView.phase, animationPhase, sequenceBusy, displayView.myUserId]);
 
   const effectiveView = displayView;
   const myPlayer = effectiveView.players.find((p) => p.userId === effectiveView.myUserId);
@@ -231,13 +240,6 @@ export function GameView({
     setLocalNineYeolOverride(null);
   }, [view.gameInstanceId]);
 
-  // 쇼당 선언 — 3인+ 모드, 본인 턴에만 활성화 (친구간 협의 룰)
-  const canDeclareShodang = isMyTurn && effectiveView.players.length >= 3;
-  async function declareShodang() {
-    if (!confirm('쇼당을 선언하시겠습니까?\n\n이 판이 즉시 무효(나가리)로 종료되고, 다음 판 점수가 ×2로 누적됩니다.')) return;
-    const r = await emitWithAck('game:declare-shodang');
-    if (!r.ok) toast.error(r.error);
-  }
 
   const matchableIds = useMemo(() => {
     if (!myPlayer?.hand || !isMyTurn) return new Set<string>();
@@ -267,45 +269,47 @@ export function GameView({
   // 총통 발동 시 EventOverlay 발화 (모든 player 동시)
   useChongtongFireTrigger(displayView);
 
-  // 게임 종료 시퀀스 — 애니메이션 완료 후 이펙트 → 딜레이 → 모달
-  // STOP: [STOP overlay] → 2s → [게임종료 overlay] → 2s → 모달
-  // 자연 종료: [애니메이션 완료] → 2s → [게임종료 overlay] → 2s → 모달
-  const endedTriggeredRef = useRef(false);
+  // 게임 종료 시퀀스 — 4-phase 애니메이션 완료 후: [STOP 이펙트] → [게임종료 이펙트] → [모달]
+  // (roomId, gameInstanceId)당 정확히 1회만 발화 — 모듈 레벨 Set이라 remount에도 가드 유지.
+  // (AI 마지막 턴은 animationPhase==='idle' && !sequenceBusy 가드로 끝까지 재생된 뒤 발화)
   const endedTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => {
+    const endedKey = `${displayView.roomId}:${displayView.gameInstanceId ?? -1}`;
     if (displayView.phase !== 'ended') {
-      // 시퀀스 replay 중 displayView가 임시로 prev(playing)로 돌아가는 경우 reset 방지
-      if (!sequenceBusy) {
-        endedTriggeredRef.current = false;
-        endedTimersRef.current.forEach(clearTimeout);
-        endedTimersRef.current = [];
-      }
+      endedTimersRef.current.forEach(clearTimeout);
+      endedTimersRef.current = [];
       return;
     }
-    if (animationPhase !== 'idle' || sequenceBusy || endedTriggeredRef.current) return;
-    endedTriggeredRef.current = true;
+    // 4-phase staging이 완전히 끝난 후에만 — AI 마지막 턴 애니메이션도 끝까지 재생
+    if (animationPhase !== 'idle' || sequenceBusy) return;
+    // 이미 이 게임의 종료 시퀀스를 발화했으면 재발화 X (중복 이펙트 차단, remount 무관)
+    if (firedEndedKeys.has(endedKey)) return;
+    firedEndedKeys.add(endedKey);
 
     const trigger = useEventOverlayStore.getState().trigger;
     const stoppedBy = displayView.stoppedByUserId;
     const isOpponentStop = stoppedBy && stoppedBy !== displayView.myUserId;
 
+    const timers: ReturnType<typeof setTimeout>[] = [];
     let t = 0;
-
+    // 상대 STOP이면 STOP 이펙트(2.2초) 먼저 → 끝난 뒤 게임종료 이펙트 (겹치지 않게)
     if (isOpponentStop) {
       trigger('stop');
-      t += 2000;
-    } else {
-      t += 2000;
+      t += 2200 + 400; // STOP 이펙트 끝 + 0.4초
     }
-
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    timers.push(setTimeout(() => trigger('game-over'), t));
-    t += 2200 + 2000; // 이펙트(2.2s) 끝난 후 2초 대기
-    timers.push(setTimeout(() => onEndedReadyRef.current?.(), t));
-
+    timers.push(setTimeout(() => trigger('game-over'), t)); // 게임종료 이펙트
+    t += 2200 + 1500; // 게임종료 이펙트(2.2초) + 1.5초
+    timers.push(setTimeout(() => onEndedReadyRef.current?.(), t)); // → 모달
     endedTimersRef.current = timers;
-    // cleanup 없음 — dependency 변경 시 타이머 유지. phase !== 'ended' 전환 시만 취소.
-  }, [displayView.phase, animationPhase, sequenceBusy, displayView.stoppedByUserId, displayView.myUserId]);
+  }, [
+    displayView.phase,
+    displayView.roomId,
+    displayView.gameInstanceId,
+    animationPhase,
+    sequenceBusy,
+    displayView.stoppedByUserId,
+    displayView.myUserId,
+  ]);
 
   function handlePlayCardWithPeek(cardId: string) {
     // rules-final.md §4 — 흔들기 게임 도중 발동.
@@ -823,15 +827,6 @@ export function GameView({
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           mediaSettings={mediaSettings}
-          playerSection={
-            <PlayerActions
-              canDeclareShodang={canDeclareShodang}
-              onDeclareShodang={() => {
-                setSettingsOpen(false);
-                void declareShodang();
-              }}
-            />
-          }
           hostSection={
             isHost ? (
               <HostRulesAction

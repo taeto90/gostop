@@ -9,6 +9,7 @@ import { findPlayer } from '../rooms/playerOps.ts';
 import { type IO, broadcastRoomState } from './broadcast.ts';
 import {
   applyBombAward,
+  computeGoThreshold,
   isAIBot,
   stealPiFromOpponents,
   stealPiOneFromEachOpponent,
@@ -71,9 +72,10 @@ export function playCardForPlayer(
   if (!player) return { ok: false, error: '플레이어를 찾을 수 없음' };
 
   const isLastTurn = player.hand.length === 1;
-  // 손에서 낸 카드가 보너스피인지 — 보너스피는 턴 유지 (한 번 더 냄, 손패 보충 룰)
-  const playedBonusPi =
-    player.hand.find((c) => c.id === opts.cardId)?.isBonusPi === true;
+  // 손에서 낸 카드가 보너스피/조커인지 — 둘 다 턴 유지 (한 번 더 냄, 손패 보충 룰)
+  const handPlayedCard = player.hand.find((c) => c.id === opts.cardId);
+  const playedHandRefill =
+    handPlayedCard?.isBonusPi === true || handPlayedCard?.isJoker === true;
   // dev 로그: 액션 직전 state snapshot
   const prevTurnPlayerId = room.game.turnPlayerId;
   const prevCounts = captureCounts(room);
@@ -175,18 +177,14 @@ export function playCardForPlayer(
     nineYeolAsSsangPi: player.flags.nineYeolAsSsangPi ?? false,
     allowGukJoon: room.rules.allowGukJoon,
   });
-  const goThreshold =
-    player.goCount > 0
-      ? Math.max(winScore, (player.flags.lastGoScore ?? 0) + 1)
-      : winScore;
   const reachedWin =
-    !ended && player.hand.length > 0 && myScore.total >= goThreshold;
+    !ended && player.hand.length > 0 && myScore.total >= computeGoThreshold(player, winScore);
 
   if (reachedWin) {
     room.pendingGoStop = { playerId, score: myScore.total };
     // turn 이동 X — 같은 player가 go 결정 후 다음 턴 진행
-  } else if (playedBonusPi && !ended) {
-    // 보너스피 — 손패 보충 후 같은 player가 한 번 더 (턴 이동 X)
+  } else if (playedHandRefill && !ended) {
+    // 보너스피/조커 — 손패 보충 후 같은 player가 한 번 더 (턴 이동 X)
     room.pendingGoStop = null;
   } else {
     // 다음 turn

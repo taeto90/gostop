@@ -637,29 +637,6 @@ export function registerSocketHandlers(io: IO, roomStore: RoomStore): void {
       progressAITurnIfAny(io, room, roomStore);
     });
 
-    // ============================== game:declare-shodang ==============================
-    // 쇼당 선언 — 본인 턴에 즉시 나가리 처리 (rules-final.md §7).
-    // 친구간 협의 룰 — 자동 검증 X. 본인 턴에서만 호출 가능.
-    socket.on('game:declare-shodang', (cb) => {
-      const { userId, roomId } = socket.data;
-      if (!userId || !roomId) return cb({ ok: false, error: '방에 입장하지 않음' });
-      const room = roomStore.get(roomId);
-      if (!room) return cb({ ok: false, error: '방을 찾을 수 없음' });
-      if (!room.game) return cb({ ok: false, error: '게임이 진행 중이 아님' });
-      if (room.phase !== 'playing') {
-        return cb({ ok: false, error: '게임 진행 중에만 선언 가능' });
-      }
-      if (room.game.turnPlayerId !== userId) {
-        return cb({ ok: false, error: '본인 턴에만 선언 가능' });
-      }
-
-      // 즉시 나가리 — 다음 판 ×2 누적
-      room.nagariMultiplier = (room.nagariMultiplier ?? 1) * 2;
-      room.phase = 'ended';
-      cb({ ok: true });
-      broadcastRoomState(io, room);
-    });
-
     // ============================== game:set-test-preset ==============================
     // 테스트 모드 한정 — 호스트가 시나리오를 다른 preset으로 변경 + 즉시 재시작.
     socket.on('game:set-test-preset', (payload, cb) => {

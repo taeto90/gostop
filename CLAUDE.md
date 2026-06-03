@@ -98,7 +98,7 @@ features/
                  AISetupModal (봇 인원 + 봇별 난이도, RoomLobbyModal에서 호출),
                  RoomRulesModal (mediaMode 옵션 포함),
                  useEndedSnapshot (ResultView snapshot/dismiss hook),
-                 GameSettingsActions (호스트 룰 / 비밀번호 토글 / 쇼당 선언),
+                 GameSettingsActions (호스트 룰 / 비밀번호 토글),
                  game-ui/* (CenterField, MyHand,
                  OpponentSlot — phase='waiting' 클릭 시 호스트 메뉴 popover + 점수 클릭 시 ScoreDetailModal,
                  CompactHeader, MobileCollected, ShakeBombModal, TargetPickerModal, ScoreDetailModal),
@@ -134,7 +134,7 @@ server.ts          Fastify entry, /health, LiveKit 토큰 endpoint
 config.ts          env 로딩 (CORS_ORIGIN array 지원, LIVEKIT_API_KEY/SECRET 등)
 rooms/             InMemoryRoomStore (Repository 패턴) + playerOps
 socket/
-  handlers.ts      모든 socket.on 라우팅 (room/game/chat/광팔이/9yeol/shodang/list)
+  handlers.ts      모든 socket.on 라우팅 (room/game/chat/광팔이/9yeol/list)
   turnFlow.ts      playCardForPlayer (handlers + autoTurn 공통),
                    scheduleAutoTurnTimer (server-side 시간 초과 timer),
                    autoPlayTurnNow, pickAutoCardId
@@ -173,15 +173,17 @@ livekit/
 - **server-side turn timer** — `scheduleAutoTurnTimer`가 `room.turnTimerRef`로 setTimeout 예약. 사용자가 브라우저 닫아도 server가 자동 카드. AI 봇 turn에는 X. `consecutiveAutoTurns >= 2`인 player는 다음 turn부터 5초로 단축 (직접 카드 클릭 시 0으로 reset)
 - **사용자 선택 모달 (정통 매칭 룰 §1-6)** — 매칭 카드 종류 다른 2장 시 모달. server `needsSelection` 응답 → 클라 모달 → 재emit
 - **텍스트 채팅** — `chat:send`/`chat:received`. server는 `socket.to(gameRoom).emit` (본인 제외 broadcast). 클라는 ack 성공 시 즉시 store에 push (optimistic update). 50개 제한 + unread count
-- **EventOverlay** — 풀스크린 emoji + label, 2.2초. 14개 이벤트 (뻑/첫뻑/자뻑/따닥/쪽/싹쓸이/폭탄/흔들기/총통/고/스톱/박/멍따/나가리/쇼당). `EVENT_SOUND_MAP`으로 사운드 매핑. `useMultiSpecialsTrigger`가 `view.turnSeq` 변경 감지 시 자동 발화
+- **EventOverlay** — 풀스크린 emoji + label, 2.2초. 이벤트 (뻑/첫뻑/자뻑/따닥/쪽/싹쓸이/폭탄/흔들기/총통/고/스톱/박/멍따/나가리/게임종료). `EVENT_SOUND_MAP`으로 사운드 매핑. `useMultiSpecialsTrigger`가 `view.turnSeq` 변경 감지 시 자동 발화
 - **AFK 표시** — `useAfkDetect`. turnUserId 변경 후 30초+ 응답 없으면 닉네임 옆 💤 (클라 단독, broadcast X)
 - **9월 열끗 ↔ 쌍피 변환** — `Player.flags.nineYeolAsSsangPi` + `game:toggle-9yeol` 이벤트. `calculateScore({nineYeolAsSsangPi})` 옵션
-- **쇼당** — `game:declare-shodang` (본인 turn에만). 즉시 phase=ended + nagariMultiplier ×2
-- **조커 카드** — `RoomRules.jokerCount` 0~3장. 셔플에 추가. 매칭 X, 클릭 시 collected에 쌍피 가치 + 더미 1장 뒤집기
-- **보너스피 (투피/쓰리피)** — `RoomRules.bonusPiTwoCount` 0~2장 + `bonusPiThreeCount` 0~1장. 셔플에 추가. 매칭 X, 손에서 내거나 더미에서 뒤집힐 때 점수판 직행 + 더미 1장 추가 뒤집기 체인 (`drawSkippingBonus` helper). 점수 계산: 투피 `isSsangPi=true` → 쌍피와 동일(2장 가치), 쓰리피 `bonusPiValue=3` → +3 가치.
-  - **stealPi**: 보너스피 1개 = 모든 상대 각각으로부터 피 1장씩 (3인이면 1보너스피=2장 뺏기). `stealPiOneFromEachOpponent` 함수 사용
+- **조커 카드** — `RoomRules.jokerCount` 0~3장. 셔플에 추가. 매칭 X. **보너스피와 동일** — collected에 쌍피 가치 직행 + 더미 일반패 손패 보충 + 턴 유지. **유일한 차이: 조커는 상대 피 빼앗기 X** (`bonusPiCollected` 미증가)
+- **보너스피 (투피/쓰리피)** — `RoomRules.bonusPiTwoCount` 0~2장 + `bonusPiThreeCount` 0~1장. 셔플 추가. 매칭 X. 점수: 투피 `isSsangPi=true`(2장 가치), 쓰리피 `bonusPiValue=3`(+3 가치).
+  - **손에서 낼 때 (사용자 변형 룰, `drawnToHand`)**: 딴패 직행(바닥 경유 X) + 상대 피 뺏기 + 더미 1장 **손패로 보충**(상대는 마스킹으로 모름) + **턴 유지**(손패 보충됐으니 한 번 더 냄). 체인 중 보너스피/조커는 딴패로, 최종 일반 패만 손패로. `game.ts`의 `if (handCard.isBonusPi || handCard.isJoker)` 분기에서 `specials.drawnToHand=true` set (조커도 동일, 상대 피 뺏기만 X).
+  - **더미에서 뒤집힐 때**: 점수판 직행 + 더미 1장 추가 뒤집기 체인 (`drawSkippingBonus` helper).
+  - **stealPi**: 가져간 보너스피 **총 개수**(손+더미 체인 누적)만큼 모든 상대 각각으로부터 피 1장씩. `stealPiOneFromEachOpponent` 함수 사용
   - **뻑 stuck**: 뻑 발생한 턴에 끼인 보너스피는 점수판 X → `room.stuckBonusPis[month]`에 stuck. 회수자가 함께 가져감 + 추가 stealPi = 보너스피 수 + 1
-  - 시각: `Card.tsx` emerald 그라데이션 SpecialCard. 테스트 시나리오 3개 (`bonus-pi-hand`, `bonus-pi-draw`, `bonus-pi-ppeok-stuck`)
+  - **턴 유지**: server `turnFlow.ts`/`aiTurn.ts`의 `playedHandRefill` 판정 (`reachedWin`/`ended` 우선). **조커도 보너스피와 동일하게 턴 유지 + 손패 보충** (2026-06-03 통일, 차이는 steal뿐)
+  - 시각: `Card.tsx` emerald 그라데이션 SpecialCard. 손패 플레이는 전용 무음 시퀀스(`runBonusPiSequence`, 아래 4-phase 섹션 참고). 테스트 시나리오 3개 (`bonus-pi-hand`, `bonus-pi-draw`, `bonus-pi-ppeok-stuck`)
 - **폭탄 보너스 카드** — 폭탄 발동 후 본인 손패에 폭탄 카드 2장 추가 (`awardBombBonusCards`). 클릭 시 손패 제거 + 더미 1장 뒤집기 (매칭 X)
 - **게임 히스토리** — localStorage 50판 + 친구별 통계. `ResultView`에서 ended 시 1회 저장 (savedRef)
 - **Toast / ErrorBoundary** — 글로벌 `toastStore` (info/success/warning/error). `alert()` 대신 사용. `ErrorBoundary`는 App.tsx 최상위 wrap → 자식 throw 시 fallback UI + 새로고침
@@ -199,6 +201,12 @@ livekit/
 **Phase 3 후 사용자 선택 모달** (정통 매칭 룰): 매칭 종류 다른 2장이면 모달 → 사용자 선택 → 두 번째 `executeTurn` → Phase 4 진행.
 
 **4-phase staging** (`useMultiTurnSequence`): server broadcast 도착 시 prevView 유지하다가 단계별로 incoming view로 전환 + peakingHandCardId/flippingCardId 효과. AI 봇 턴은 server `aiTurn.ts`의 `AI_TURN_DELAY_MS`(2200ms 기본)로 자동 진행.
+
+⚠️ **broadcast 큐**: `pendingQueueRef`(배열)로 빠른 연속 broadcast(폭탄 보너스 카드 / 보너스피 턴 유지 등 같은 player 연속 진행) 순서대로 처리. 단일 슬롯이면 중간 turn 손실되어 애니메이션 스킵됨.
+
+### 보너스피 전용 시퀀스 (`runBonusPiSequence`, 4-phase 미사용)
+
+손에서 보너스피 낼 때(`lastTurnSpecials.drawnToHand`)는 4-phase 대신 전용 **무음** 시퀀스: 손패 확대 → `DELAY_BONUS_PI_SHORT`(0.5s) → 보너스피 딴패 비행 → 0.5s → 상대 피 뺏기 비행 → `DELAY_BONUS_PI_STEP`(1s) → 더미 카드 손패 보충. 중간 view는 `revertStealPi`/`buildBonusPiBeforeDraw`(`phaseViews.ts`)로 단계 분리. '착' 사운드 X.
 
 ### 정통 4-3-3 분배 시각화 (`lib/dealingPattern.ts`)
 
@@ -455,9 +463,9 @@ testMode에서 phase별 console.log 자동 출력 (`[turnSeq=N 🟢본인=alice]
 
 - ✅ 룰 엔진 100% 구현 (rules-final.md 기준) — 분배/시작점수/박/고배수/뻑/자뻑/따닥/쪽/총통/3뻑/나가리/마지막턴 싹쓸이 / **정통 매칭 룰 §1-6 (Image #20 표) 완전 적용**
 - ✅ 5인 화상 (LiveKit Cloud 실제 통합) + **음성 전용 모드** (server token이 카메라 publish 권한 X로 강제)
-- ✅ 광팔이 (자원/지정 메뉴 모두 지원), 방장 권한 (게임 중 룰 변경 차단), 방장 자동 위임, **1:1 AI 모드**, 텍스트 채팅, 도움말, 게임 히스토리, **server-side turn timer** (자동 5초 단축), EventOverlay 14개, RoomRules 모달 (모든 옵션 적용), PWA, 룰 테스트 페이지, **비밀방**, **방 목록 폴링**, **한 사용자 한 방 정책**, **로비 이전 방 복귀**, **테스트 모드** (preset 시나리오 + 속도 슬라이더), **게임 종료 후 대기실 복귀**, **룰 변경 알림 toast**, **대기실 disconnect 자동 제거**
-- ✅ 옵션 룰: 9월 열끗 ↔ 쌍피 / 쇼당 / 조커 / 폭탄 보너스 카드 / 멍따 / **보너스피(투피/쓰리피)**
-- ✅ **Go/Stop 시스템** — `pendingGoStop` server state + `GoStopModal`. 본인 turn 끝 winScore 도달 → turn 이동 X + 모달. AI는 `shouldAIGo(player, room, difficulty)` 난이도별 판단
+- ✅ 광팔이 (자원/지정 메뉴 모두 지원), 방장 권한 (게임 중 룰 변경 차단), 방장 자동 위임, **1:1 AI 모드**, 텍스트 채팅, 도움말, 게임 히스토리, **server-side turn timer** (자동 5초 단축), EventOverlay, RoomRules 모달 (모든 옵션 적용), PWA, 룰 테스트 페이지, **비밀방**, **방 목록 폴링**, **한 사용자 한 방 정책**, **로비 이전 방 복귀**, **테스트 모드** (preset 시나리오 + 속도 슬라이더), **게임 종료 후 대기실 복귀**, **룰 변경 알림 toast**, **대기실 disconnect 자동 제거**
+- ✅ 옵션 룰: 9월 열끗 ↔ 쌍피 / 조커(보너스피와 동일, steal만 X) / 폭탄 보너스 카드 / 멍따 / **보너스피(투피/쓰리피)**
+- ✅ **Go/Stop 시스템** — `pendingGoStop` server state + `GoStopModal`. 본인 turn 끝 winScore 도달 → turn 이동 X + 모달. **고 조건**: 첫 고 winScore 도달, **2고+는 직전 고 점수보다 1점 이상**(`flags.lastGoScore`, `turnFlow.ts`의 `goThreshold`). AI는 `shouldAIGo(player, room, difficulty)` 난이도별 판단
 - ✅ **결과 화면 모달화** — ResultView가 `fixed inset-0` + GameView가 backdrop. 종료 직후 `[대기하기/통계보기]` ChoiceModal → 통계보기 선택해야 ResultView. `useEndedSnapshot.triggerChoice`가 GameView `animationPhase==='idle'`일 때만 발화
 - ✅ **본인/상대 N고 + 점수 위치 개선** — 본인 CenterField 좌하단에 `{N}고` rose 배지 + `×배수`. OpponentSlot은 점수를 collected 왼쪽 box로 이동 + 카드 수 배지. MobileCollected 라벨 우측에 카드 수 (점수는 하단 총점)
 - ✅ **흔들기/폭탄 모달 [취소]** — 모달 cancel 시 emit X, 손패 그대로 → 다른 카드 선택 가능. NineYeolPickerModal은 본인 turn + lastTurnActorUserId 일치 시만 발화 (상대 turn 오발화 차단)

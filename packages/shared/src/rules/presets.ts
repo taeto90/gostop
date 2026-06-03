@@ -262,12 +262,13 @@ export const PRESETS: Record<PresetId, PresetSetup> = {
     field: ['m07-pi-1'],
     drawTop: ['m11-gwang'],
   },
-  // AI STOP: 봇 collected에 3광 + 손패에 4번째 광 → 봇 턴에 winScore 도달 → AI STOP
+  // AI STOP 종료 연출(STOP→게임종료 이펙트→모달) 확인용.
+  // 봇 4광 보유 + 손패에 5번째 광(공산, 바닥 매칭) → 봇이 그 광을 내는 턴 5광=15점
+  // → winScore(7) 초과 → 종료. ※ 확실한 STOP을 보려면 AI 난이도 EASY 권장 (medium/hard는 GO 가능).
   'ai-stop': {
-    botCollected: ['m01-gwang', 'm03-gwang', 'm08-gwang'],
-    botHand: ['m11-gwang'],
-    field: ['m11-pi-1'],
-    drawTop: ['m11-pi-2'],
+    botCollected: ['m01-gwang', 'm03-gwang', 'm11-gwang', 'm12-gwang'],
+    botHand: ['m08-gwang'],
+    field: ['m08-pi-1'],
   },
   // AI GO: 봇 collected 3광 + 손패 다수 + matchable → medium AI가 GO 선언
   // 봇 hand 6장 + goCount 0 + matchable 다수 → shouldAIGo(medium) = true

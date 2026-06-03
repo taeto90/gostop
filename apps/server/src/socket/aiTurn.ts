@@ -17,7 +17,12 @@ import {
 import type { RoomStore } from '../rooms/RoomStore.ts';
 import { findPlayer } from '../rooms/playerOps.ts';
 import { broadcastRoomState, type IO } from './broadcast.ts';
-import { applyBombAward, isAIBot, stealPiFromOpponents } from './gameLogic.ts';
+import {
+  applyBombAward,
+  computeGoThreshold,
+  isAIBot,
+  stealPiFromOpponents,
+} from './gameLogic.ts';
 import { applyGo, applyStop } from './turnFlow.ts';
 import { captureCounts, endGameLog, logPlayCard } from './gameLog.ts';
 
@@ -44,6 +49,14 @@ export function shouldAIGo(
 
   if (hand.length < 2) return false;
 
+  // 이미 압도적 점수(winScore 2배 이상)면 난이도 무관 STOP.
+  // 고박 리스크 회피 + 더 딸 카드 없을 때 무의미한 GO로 게임이 질질 끌리는 것 방지.
+  const myScore = calculateScore(player.collected, {
+    nineYeolAsSsangPi: player.flags.nineYeolAsSsangPi ?? false,
+    allowGukJoon: room.rules.allowGukJoon,
+  }).total;
+  if (myScore >= room.rules.winScore * 2) return false;
+
   const field = room.game?.field ?? [];
   const matchableCount = hand.filter(
     (c) => !c.isBomb && !c.isJoker && !c.isBonusPi && findMatches(field, c).length > 0,
@@ -64,10 +77,6 @@ export function shouldAIGo(
     ),
     0,
   );
-  const myScore = calculateScore(player.collected, {
-    nineYeolAsSsangPi: player.flags.nineYeolAsSsangPi ?? false,
-    allowGukJoon: room.rules.allowGukJoon,
-  }).total;
 
   if (goCount >= 3) return false;
   if (hand.length >= 3 && matchableCount >= 1 && myScore > maxOpponentScore) return true;
@@ -126,9 +135,10 @@ export function progressAITurnIfAny(io: IO, room: Room, store: RoomStore): void 
       const prevCounts = captureCounts(room);
 
       const isLastTurn = ai.hand.length === 1;
-      // 손에서 낸 카드가 보너스피면 턴 유지 (한 번 더 — 손패 보충 룰)
-      const playedBonusPi =
-        ai.hand.find((c) => c.id === cardId)?.isBonusPi === true;
+      // 손에서 낸 카드가 보너스피/조커면 턴 유지 (한 번 더 — 손패 보충 룰)
+      const aiPlayedCard = ai.hand.find((c) => c.id === cardId);
+      const playedHandRefill =
+        aiPlayedCard?.isBonusPi === true || aiPlayedCard?.isJoker === true;
       const result = executeTurn(
         {
           hand: ai.hand,
@@ -190,12 +200,14 @@ export function progressAITurnIfAny(io: IO, room: Room, store: RoomStore): void 
       }
 
       // AI도 winScore 도달 검사 (rules-final.md §5).
+      // 2고+는 직전 고 점수보다 1점 이상 올라야 다시 고 가능 (turnFlow와 동일 goThreshold).
       const winScore = room.rules.winScore;
       const aiScore = calculateScore(ai.collected, {
         nineYeolAsSsangPi: ai.flags.nineYeolAsSsangPi ?? false,
         allowGukJoon: room.rules.allowGukJoon,
       });
-      const reachedWin = !ended && ai.hand.length > 0 && aiScore.total >= winScore;
+      const reachedWin =
+        !ended && ai.hand.length > 0 && aiScore.total >= computeGoThreshold(ai, winScore);
 
       if (reachedWin) {
         // AI 액션 후 turn 이동 전 logPlayCard
@@ -211,14 +223,19 @@ export function progressAITurnIfAny(io: IO, room: Room, store: RoomStore): void 
         const aiDifficulty = room.aiBotDifficulties?.[turnPlayerId] ?? 'medium';
         const willGo = shouldAIGo(ai, room, aiDifficulty as 'easy' | 'medium' | 'hard');
         if (willGo) {
+          // pendingGoStop 설정 → applyGo가 lastGoScore를 이번 점수로 기록 (다음 고 기준).
+          // (미설정 시 applyGo가 lastGoScore를 못 올려 AI가 같은 점수로 계속 고함)
+          room.pendingGoStop = { playerId: turnPlayerId, score: aiScore.total };
           applyGo(io, room, store, turnPlayerId);
         } else {
-          applyStop(io, room);
+          // 즉시 승리 경로 — pendingGoStop 미설정이므로 stoppedByUserId 명시 전달.
+          // (미전달 시 null → 클라가 상대 STOP 이펙트를 건너뛰고 바로 게임종료로 감)
+          applyStop(io, room, turnPlayerId);
           broadcastRoomState(io, room);
         }
       } else {
-        // 보너스피면 턴 유지 (한 번 더), 아니면 다음 턴
-        if (!(playedBonusPi && !ended)) {
+        // 보너스피/조커면 턴 유지 (한 번 더), 아니면 다음 턴
+        if (!(playedHandRefill && !ended)) {
           const idx = room.players.findIndex((p) => p.id === turnPlayerId);
           const nextIdx = (idx + 1) % room.players.length;
           room.game.turnPlayerId = room.players[nextIdx]!.id;

@@ -494,10 +494,10 @@ export function executeTurn(
     const drawnCard = draw.drawnCard;
     specials.drawnCardId = drawnCard.id;
 
-    // 보너스피 손패 보충 룰 (사용자 변형) — 손에서 보너스피를 냈으면 더미 최종 일반패를
+    // 손패 보충 룰 (사용자 변형) — 손에서 보너스피/조커를 냈으면 더미 최종 일반패를
     // 바닥에 깔지 않고 내 손패로 가져옴. 상대는 손패 마스킹으로 그 패를 모름. 손패 수 유지.
-    // (조커는 아래 일반 처리 — 바닥 플레이.)
-    if (handCard.isBonusPi) {
+    // (조커도 보너스피와 동일 — 차이는 상대 피 빼앗기뿐: 조커는 위에서 bonusPiCollected를 안 올림.)
+    if (handCard.isBonusPi || handCard.isJoker) {
       specials.drawnToHand = true;
       events.push({
         step: 'draw',

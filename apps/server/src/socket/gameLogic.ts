@@ -23,6 +23,18 @@ export function isAIBot(userId: string): boolean {
   return userId.startsWith(AI_BOT_PREFIX);
 }
 
+/**
+ * 고 외치기 가능 점수 임계값 (rules-final.md §5).
+ *   첫 고 — winScore 이상
+ *   2고+ — 직전 고 점수(lastGoScore)보다 1점 이상
+ * turnFlow(사람/타이머)와 aiTurn(봇)이 동일 기준을 쓰도록 단일 소스로 추출.
+ */
+export function computeGoThreshold(player: Player, winScore: number): number {
+  return player.goCount > 0
+    ? Math.max(winScore, (player.flags.lastGoScore ?? 0) + 1)
+    : winScore;
+}
+
 const AI_BOT_PROFILES: { userId: string; nickname: string; emojiAvatar: string }[] = [
   { userId: 'ai-bot-1', nickname: 'GoStop봇', emojiAvatar: '🤖' },
   { userId: 'ai-bot-2', nickname: 'GoStop봇 2', emojiAvatar: '👽' },

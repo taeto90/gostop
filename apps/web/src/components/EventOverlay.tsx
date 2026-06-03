@@ -22,7 +22,6 @@ const EVENT_SOUND_MAP: Partial<Record<GameEvent, SoundName>> = {
   stop: 'score-up',
   myungttadak: 'score-up',
   nagari: 'game-end',
-  shodang: 'emoji-react',
   'game-over': 'game-end',
 };
 
@@ -51,7 +50,6 @@ const EVENT_META: Record<GameEvent, EventMeta> = {
   bak: { emoji: '💢', label: '박!', color: 'rose' },
   myungttadak: { emoji: '🐦', label: '멍따!', color: 'cyan' },
   nagari: { emoji: '🤝', label: '나가리...', color: 'slate' },
-  shodang: { emoji: '🚫', label: '쇼당!', color: 'amber', shake: true },
   'game-over': { emoji: '🏁', label: '게임 종료', color: 'slate' },
 };
 
