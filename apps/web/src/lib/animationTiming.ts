@@ -91,6 +91,14 @@ export function applySpeed(seconds: number): number {
 export const sec = (s: number): number => Math.round(applySpeed(s) * 1000);
 
 // ============================================================
+// 게임 종료 시퀀스 (GameView) — EventOverlay 표시 2.2s 기준
+// ============================================================
+/** 상대 STOP 이펙트 발화 → 게임종료 이펙트까지 (ms). 2200(이펙트) + 400 여유 */
+export const ENDED_STOP_TO_GAMEOVER_MS = 2600;
+/** 게임종료 이펙트 발화 → ChoiceModal까지 (ms). 2200(이펙트) + 1500 여유 */
+export const ENDED_GAMEOVER_TO_MODAL_MS = 3700;
+
+// ============================================================
 // 모달 공통 — framer-motion spring transition (게임 텐션에 맞게 빠른 spring)
 // ============================================================
 export const MODAL_SPRING = {

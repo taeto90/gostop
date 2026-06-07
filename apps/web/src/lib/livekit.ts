@@ -37,7 +37,6 @@ export async function fetchLiveKitToken(
 
 const CAM_KEY = 'gostop:livekit-cam';
 const MIC_KEY = 'gostop:livekit-mic';
-const SIDEBAR_OPEN_KEY = 'gostop:video-sidebar-open';
 
 function loadBool(key: string, fallback: boolean): boolean {
   try {
@@ -71,12 +70,4 @@ export function loadMicrophonePref(): boolean {
 }
 export function saveMicrophonePref(value: boolean): void {
   saveBool(MIC_KEY, value);
-}
-
-/** 사이드바 펼침 상태 — 기본 PC=ON */
-export function loadSidebarOpenPref(): boolean {
-  return loadBool(SIDEBAR_OPEN_KEY, true);
-}
-export function saveSidebarOpenPref(value: boolean): void {
-  saveBool(SIDEBAR_OPEN_KEY, value);
 }

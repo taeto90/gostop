@@ -25,8 +25,8 @@ export const HAND_CARD_MAX_WIDTH = {
 /** 손패 카드 최소 너비 (px). 매우 작은 화면에서 fallback. */
 export const HAND_CARD_MIN_WIDTH = 28;
 
-/** 손패 카드 사이 가로 간격 (px). PC/모바일 동일. */
-export const HAND_CARD_GAP = 22;
+/** 손패 카드 사이 가로 간격 (px). PC/모바일 동일. (2026-06: 22→11 — 카드 키우기) */
+export const HAND_CARD_GAP = 11;
 
 // ============================================================
 // 손패 영역 (전체 section)
@@ -37,8 +37,8 @@ export const HAND_CARD_GAP = 22;
  */
 export const HAND_AREA_RATIO = {
   pc: 0.2,
-  mobile: 0.24,
-  shortMobile: 0.28,
+  mobile: 0.285, // 2026-06: 0.24→0.285 — 모바일 손패 카드 확대 (heightBased 결정자)
+  shortMobile: 0.32,
 } as const;
 
 /** 손패 영역 최소 height (px). 비율 계산 결과가 너무 작아지지 않게. */
@@ -47,7 +47,7 @@ export const HAND_AREA_MIN = 85;
 /** 손패 영역 최대 height (px). 비율 계산 결과가 너무 커지지 않게. */
 export const HAND_AREA_MAX = {
   pc: 170,
-  mobile: 130,
+  mobile: 135,
 } as const;
 
 // ============================================================
@@ -58,8 +58,8 @@ export const HAND_AREA_MAX = {
  * 더 작으면 그쪽이 우선. 모바일이 큰 이유: heightBased로 자동 제한되므로 cap은 넉넉히.
  */
 export const FIELD_CARD_MAX_WIDTH = {
-  pc: 70,
-  mobile: 144,
+  pc: 117,
+  mobile: 52, // 모바일 — 손패(간격 11px·10장 기준 ~52px)와 동일 크기
 } as const;
 
 /** 바닥 카드 최소 너비 (px). */
@@ -99,16 +99,16 @@ export const FIELD_STACK_OFFSET_RATIO = 0.25;
 // ============================================================
 // 점수판 (CollectedPanel)
 // ============================================================
-/** 좌측 점수판(딴패) 컬럼 너비 (px). */
+/** 좌측 점수판(딴패) 컬럼 너비 (px). 50% 겹침 카드 10장/줄 기준 (PC 53px·모바일 30px). */
 export const COLLECTED_PANEL_WIDTH = {
-  pc: 200,
-  mobile: 140,
+  pc: 312,
+  mobile: 196,
 } as const;
 
-/** 점수판 안에서 카드 표시 너비 (px). */
+/** 점수판 안에서 카드 표시 너비 (px) — 라벨 위 + 50% 겹침 (PC/모바일 동일 구조). */
 export const COLLECTED_CARD_WIDTH = {
-  pc: 38,
-  mobile: 24,
+  pc: 53,
+  mobile: 30,
 } as const;
 
 // ============================================================
@@ -121,35 +121,26 @@ export const RESULT_CARD_WIDTH = {
 } as const;
 
 // ============================================================
-// 화상채팅 사이드바 (LiveKit)
+// 화상채팅 타일 (LiveKit — MediaTilesPanel)
 // ============================================================
-/**
- * 사이드바 height 100% 기준 비율 — 5명 카드 + 위아래 패딩 + 사이 갭.
- * 5*17 + 4*2 + 2*3.5 = 85 + 8 + 7 = 100%. (인원 적을 땐 가운데 정렬로 빈 공간)
- */
-/** 각 비디오 카드 height (사이드바 height 대비) */
-export const VIDEO_TILE_HEIGHT_RATIO = 0.17;
-/** 비디오 카드 사이 갭 (사이드바 height 대비) */
-export const VIDEO_TILE_GAP_RATIO = 0.02;
-/** 사이드바 위/아래 패딩 (사이드바 height 대비) */
-export const VIDEO_SIDEBAR_VERTICAL_PADDING_RATIO = 0.035;
-/** 사이드바 좌우 패딩 (px). 카드 width와 별개로 좌우 공간 확보 */
-export const VIDEO_SIDEBAR_HORIZONTAL_PADDING = 6;
-/** 비디오 카드 aspect ratio (가로:세로) — 16:9 */
-export const VIDEO_TILE_ASPECT_RATIO = 16 / 9;
-/** 사이드바가 보여줄 최대 인원 */
+/** 타일 그리드가 보여줄 최대 인원 */
 export const VIDEO_SIDEBAR_MAX_TILES = 5;
 /**
  * 테스트용 placeholder 인원 — `stores/devTestStore.ts`에서 동적 관리.
  * Settings 모달의 "개발 테스트" 섹션에서 토글. 운영 배포 시 자동 0 (DEV가 아니므로).
  */
 
-/** 사이드바 collapse 시 가로폭 (토글 버튼만). */
-export const VIDEO_SIDEBAR_COLLAPSED_WIDTH = 36;
-/** 사이드바 toggle 버튼 + 위쪽 여유 공간 (펼친/접힌 둘 다 동일). */
-export const SIDEBAR_TOGGLE_TOP_GAP = 32;
-/** 사이드바 펼침 시 fallback 폭 (px). 동적 계산 전 첫 렌더 시 사용 */
-export const VIDEO_SIDEBAR_FALLBACK_WIDTH = 200;
+// ============================================================
+// PC 새 게임 화면 (2026-06 시니어 친화 개편)
+// ============================================================
+/** 우측 통합 사이드바(화상/참여자/채팅) 펼침 폭 (px). */
+export const SIDEBAR_WIDTH_PC = 320;
+/** 우측 통합 사이드바 접힘 폭 (px) — 토글 바만. */
+export const SIDEBAR_COLLAPSED_WIDTH_PC = 36;
+/** 상대 보드 딴패 카드 너비 상한 (px) — 겹침 50% 고정, 폭 부족 시 자동 축소 (CollectedGroupsRow). */
+export const OPPONENT_COLLECTED_CARD_WIDTH = 42;
+/** 상대 fake-hand 카드 너비 (px) — Phase 1-B 비행 source (staging 중에만 잠깐 렌더). */
+export const OPPONENT_HAND_MINI_WIDTH = 36;
 
 // ============================================================
 // 헬퍼

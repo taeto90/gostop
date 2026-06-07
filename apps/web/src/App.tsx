@@ -12,6 +12,7 @@ import { tryLockLandscape } from './lib/pwa.ts';
 import { connectSocket, updateSocketToken, disconnectSocket } from './lib/socket.ts';
 import { LoginPage } from './features/auth/LoginPage.tsx';
 import { ProfileSetupPage } from './features/auth/ProfileSetupPage.tsx';
+import { GameDemoView } from './features/debug-game/GameDemoView.tsx';
 import { Lobby } from './features/lobby/Lobby.tsx';
 import { ResultDemoView } from './features/room/ResultDemoView.tsx';
 import { RoomScreen } from './features/room/RoomScreen.tsx';
@@ -63,6 +64,17 @@ export default function App() {
   useEffect(() => {
     void tryLockLandscape();
   }, []);
+
+  // 개발용 — 인증 없이 게임 UI 데모 (/game-demo, playwright 캡처용). DEV 전용.
+  if (import.meta.env.DEV && window.location.pathname === '/game-demo') {
+    return (
+      <ErrorBoundary>
+        <GameDemoView />
+        <EventOverlay />
+        <ToastContainer />
+      </ErrorBoundary>
+    );
+  }
 
   // 초기 세션 복원 중 — 로딩 화면
   if (!initialized) {

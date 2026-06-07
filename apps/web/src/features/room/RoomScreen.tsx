@@ -7,7 +7,7 @@ import { markRoomLeft, wasRecentlyLeft } from '../../lib/leftRoomGuard.ts';
 import { LiveKitGameRoom } from '../livekit/LiveKitGameRoom.tsx';
 import { MediaSettings } from '../livekit/MediaSettings.tsx';
 import { VideoMobileModal } from '../livekit/VideoMobileModal.tsx';
-import { VideoSidebar } from '../livekit/VideoSidebar.tsx';
+import { MediaTilesPanel } from '../livekit/MediaTilesPanel.tsx';
 import { GameView } from './GameView.tsx';
 import { ResultView } from './ResultView.tsx';
 import { RoomLobbyModal } from './RoomLobbyModal.tsx';
@@ -207,7 +207,7 @@ export function RoomScreen() {
             view={view}
             onPlayCard={handlePlayCard}
             onLeave={handleLeave}
-            videoSidebar={showVideoUI ? <VideoSidebar view={view} /> : undefined}
+            videoSidebar={showVideoUI ? <MediaTilesPanel view={view} /> : undefined}
             videoMobileModalRender={
               showVideoUI
                 ? ({ open, onClose }) => (
@@ -278,7 +278,7 @@ export function RoomScreen() {
             view={snap}
             onPlayCard={handlePlayCard}
             onLeave={handleLeave}
-            videoSidebar={showVideoUI ? <VideoSidebar view={snap} /> : undefined}
+            videoSidebar={showVideoUI ? <MediaTilesPanel view={snap} /> : undefined}
             videoMobileModalRender={
               showVideoUI
                 ? ({ open, onClose }) => (
@@ -348,7 +348,7 @@ export function RoomScreen() {
             view={view}
             onPlayCard={handlePlayCard}
             onLeave={handleLeave}
-            videoSidebar={showVideoUI ? <VideoSidebar view={view} /> : undefined}
+            videoSidebar={showVideoUI ? <MediaTilesPanel view={view} /> : undefined}
             videoMobileModalRender={
               showVideoUI
                 ? ({ open, onClose }) => (

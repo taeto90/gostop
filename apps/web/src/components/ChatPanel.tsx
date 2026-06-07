@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { emitWithAck } from '../lib/socket.ts';
 import {
@@ -14,6 +14,8 @@ import { toast } from '../stores/toastStore.ts';
 interface ChatPanelProps {
   open: boolean;
   onClose: () => void;
+  /** 헤더 우측 추가 버튼 (예: 이모지 피커) */
+  headerExtra?: React.ReactNode;
 }
 
 /**
@@ -23,11 +25,17 @@ function ChatBody({
   active,
   onClose,
   className,
+  inputExtra,
+  headerExtra,
 }: {
   /** unread 리셋 + 자동 스크롤 / Esc 핸들러 활성화 (visible 상태) */
   active: boolean;
   onClose?: () => void;
   className?: string;
+  /** 입력란 옆 추가 버튼 */
+  inputExtra?: React.ReactNode;
+  /** 헤더 우측 추가 버튼 (예: 이모지 피커 — PC 우측 사이드바) */
+  headerExtra?: React.ReactNode;
 }) {
   const messages = useChatStore((s) => s.messages);
   const resetUnread = useChatStore((s) => s.resetUnread);
@@ -41,8 +49,8 @@ function ChatBody({
     const ta = textareaRef.current;
     if (!ta) return;
     ta.style.height = 'auto';
-    // text-sm line-height ≈ 20px × 3줄 + padding-y 8px*2 = 76px
-    const max = 76;
+    // text-base line-height 24px × 3줄 + padding-y 8px*2 = 88px
+    const max = 88;
     ta.style.height = Math.min(ta.scrollHeight, max) + 'px';
   }, [text]);
 
@@ -102,18 +110,21 @@ function ChatBody({
 
   return (
     <div className={`flex flex-col overflow-hidden ${className ?? ''}`}>
-      {/* 헤더 */}
-      <div className="flex items-center justify-between border-b border-felt-800/60 px-4 py-2.5">
-        <span className="text-sm font-bold text-felt-100">💬 채팅</span>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded bg-felt-950/60 text-felt-300 hover:bg-felt-800"
-            aria-label="닫기"
-          >
-            ✕
-          </button>
-        )}
+      {/* 헤더 — 우측에 headerExtra(이모지 피커 등) + 닫기 */}
+      <div className="flex items-center justify-between border-b border-felt-800/60 px-4 py-2">
+        <span className="text-base font-bold text-felt-100">💬 채팅</span>
+        <div className="flex items-center gap-1.5">
+          {headerExtra}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="flex h-7 w-7 items-center justify-center rounded bg-felt-950/60 text-felt-300 hover:bg-felt-800"
+              aria-label="닫기"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 메시지 list — min-h-0 필수 (flex-col에서 자식이 줄어들기 허용) */}
@@ -138,9 +149,9 @@ function ChatBody({
                   m.mine ? 'items-end' : 'items-start'
                 }`}
               >
-                <span className="text-[10px] text-felt-400">{m.fromNickname}</span>
+                <span className="text-xs text-felt-400">{m.fromNickname}</span>
                 <span
-                  className={`mt-0.5 whitespace-pre-wrap break-words rounded-lg px-3 py-1.5 text-sm ${
+                  className={`mt-0.5 whitespace-pre-wrap break-words rounded-lg px-3 py-1.5 text-base ${
                     m.mine
                       ? 'bg-amber-500/30 text-amber-100'
                       : 'bg-felt-800/80 text-felt-100'
@@ -165,17 +176,18 @@ function ChatBody({
           placeholder="메시지 입력..."
           maxLength={500}
           rows={1}
-          className="flex-1 resize-none rounded border border-felt-700 bg-felt-950 px-3 py-2 text-sm text-felt-100 placeholder-felt-500 focus:border-amber-400 focus:outline-none"
+          className="flex-1 resize-none rounded border border-felt-700 bg-felt-950 px-3 py-2 text-base text-felt-100 placeholder-felt-500 focus:border-amber-400 focus:outline-none"
           style={{
-            maxHeight: '76px',
-            lineHeight: '20px',
+            maxHeight: '88px',
+            lineHeight: '24px',
             overflowY: 'auto',
           }}
         />
+        {inputExtra && <div className="self-end">{inputExtra}</div>}
         <button
           onClick={send}
           disabled={busy || !text.trim()}
-          className="self-end rounded bg-amber-500 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50"
+          className="self-end rounded bg-amber-500 px-4 py-2 text-base font-bold text-slate-950 hover:bg-amber-400 disabled:opacity-50"
         >
           전송
         </button>
@@ -192,7 +204,7 @@ function ChatBody({
  * - ESC / 오버레이 클릭으로 닫기
  * - 모달 열릴 때 unreadCount 리셋
  */
-export function ChatPanel({ open, onClose }: ChatPanelProps) {
+export function ChatPanel({ open, onClose, headerExtra }: ChatPanelProps) {
   const [vvHeight, setVvHeight] = useState<number | null>(null);
 
   useEffect(() => {
@@ -228,7 +240,7 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
             style={{ maxHeight: maxH }}
             onClick={(e) => e.stopPropagation()}
           >
-            <ChatBody active={open} onClose={onClose} className="h-full" />
+            <ChatBody active={open} onClose={onClose} className="h-full" headerExtra={headerExtra} />
           </motion.div>
         </motion.div>
       )}
@@ -240,106 +252,16 @@ export function ChatPanel({ open, onClose }: ChatPanelProps) {
  * 인라인 채팅 패널 — RoomLobbyModal 우측에 항상 펼친 상태로 사용.
  * 헤더 닫기 버튼 X, ESC 비활성. unread 카운트는 active=true로 자동 리셋.
  */
-export function ChatInlinePanel({ className }: { className?: string }) {
-  return <ChatBody active className={className} />;
-}
-
-/** PC 사이드 패널 — width 드래그 리사이즈 + localStorage 저장 */
-const CHAT_WIDTH_KEY = 'gostop:chat-panel-width';
-const CHAT_WIDTH_MIN = 240;
-const CHAT_WIDTH_MAX = 600;
-const CHAT_WIDTH_DEFAULT = 320;
-
-export function loadChatPanelWidth(): number {
-  try {
-    const raw = localStorage.getItem(CHAT_WIDTH_KEY);
-    if (!raw) return CHAT_WIDTH_DEFAULT;
-    const n = parseInt(raw, 10);
-    if (isNaN(n)) return CHAT_WIDTH_DEFAULT;
-    return Math.max(CHAT_WIDTH_MIN, Math.min(CHAT_WIDTH_MAX, n));
-  } catch {
-    return CHAT_WIDTH_DEFAULT;
-  }
-}
-
-function saveChatPanelWidth(w: number) {
-  try {
-    localStorage.setItem(CHAT_WIDTH_KEY, String(w));
-  } catch {
-    // localStorage 사용 불가 (private mode 등) — 무시
-  }
-}
-
-/**
- * PC 게임 화면 우측 채팅 사이드 패널.
- * - grid column으로 inline 배치 (화상 사이드바 왼쪽)
- * - 왼쪽 가장자리 드래그로 width 리사이즈 (240~600px) + localStorage 저장
- * - 닫기 버튼으로 onClose 호출
- */
-export function ChatSidePanel({
-  width,
-  onWidthChange,
-  onClose,
+export function ChatInlinePanel({
+  className,
+  inputExtra,
+  headerExtra,
 }: {
-  width: number;
-  onWidthChange: (w: number) => void;
-  onClose: () => void;
+  className?: string;
+  inputExtra?: React.ReactNode;
+  headerExtra?: React.ReactNode;
 }) {
-  const draggingRef = useRef(false);
-  const startXRef = useRef(0);
-  const startWRef = useRef(width);
-  const latestWRef = useRef(width);
-  latestWRef.current = width;
-
-  useEffect(() => {
-    function onMove(e: MouseEvent) {
-      if (!draggingRef.current) return;
-      // 좌측 핸들 드래그 — 왼쪽으로 끌면 width 증가
-      const delta = startXRef.current - e.clientX;
-      const next = Math.max(
-        CHAT_WIDTH_MIN,
-        Math.min(CHAT_WIDTH_MAX, startWRef.current + delta),
-      );
-      onWidthChange(next);
-    }
-    function onUp() {
-      if (!draggingRef.current) return;
-      draggingRef.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      // 드래그 종료 시점의 최신 width 저장 (start 시점이 아님)
-      saveChatPanelWidth(latestWRef.current);
-    }
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-  }, [onWidthChange]);
-
-  function onHandleDown(e: React.MouseEvent) {
-    e.preventDefault();
-    draggingRef.current = true;
-    startXRef.current = e.clientX;
-    startWRef.current = width;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }
-
   return (
-    <div
-      className="relative flex h-full flex-col overflow-hidden rounded-lg border border-felt-700/60 bg-felt-900/90 shadow-lg backdrop-blur-sm"
-      style={{ width: `${width}px` }}
-    >
-      {/* 좌측 드래그 핸들 */}
-      <div
-        onMouseDown={onHandleDown}
-        className="absolute left-0 top-0 z-10 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-amber-500/40"
-        title="드래그하여 너비 조절"
-        aria-label="채팅창 너비 조절"
-      />
-      <ChatBody active onClose={onClose} className="h-full" />
-    </div>
+    <ChatBody active className={className} inputExtra={inputExtra} headerExtra={headerExtra} />
   );
 }

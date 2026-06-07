@@ -14,7 +14,7 @@ import { useChongtongFireTrigger } from '../../hooks/useChongtongFireTrigger.ts'
 import { toast } from '../../stores/toastStore.ts';
 import { useEventOverlayStore } from '../../stores/eventOverlayStore.ts';
 import type { PresetId, RoomView } from '@gostop/shared';
-import { getMatchableCardsFromHand, PRESETS } from '@gostop/shared';
+import { calculateScore, canDeclareGoStop, getMatchableCardsFromHand, PRESETS } from '@gostop/shared';
 import { TargetPickerModal } from './game-ui/TargetPickerModal.tsx';
 import {
   BombChoiceModal,
@@ -27,8 +27,8 @@ import { useNineYeolDecision } from '../../hooks/useNineYeolDecision.ts';
 import { PRESET_LABELS } from './RoomLobbyModal.tsx';
 import { computeMultiplier, multiplierBreakdown } from '../../lib/multiplierUtils.ts';
 import { useElementSize } from '../../hooks/useElementSize.ts';
-import { ChatPanel, ChatSidePanel, loadChatPanelWidth } from '../../components/ChatPanel.tsx';
-import { EmojiReactions } from '../../components/EmojiReactions.tsx';
+import { ChatPanel } from '../../components/ChatPanel.tsx';
+import { EmojiFloatLayer, EmojiPickerButton } from '../../components/EmojiReactions.tsx';
 import { SettingsModal } from '../../components/SettingsModal.tsx';
 import { emitWithAck } from '../../lib/socket.ts';
 import { useChatStore } from '../../stores/chatStore.ts';
@@ -40,11 +40,19 @@ import {
   HAND_AREA_RATIO,
   isCompactWidth,
 } from '../../lib/layoutConstants.ts';
+import {
+  ENDED_GAMEOVER_TO_MODAL_MS,
+  ENDED_STOP_TO_GAMEOVER_MS,
+} from '../../lib/animationTiming.ts';
+import { AnimatedNumber } from '../../components/AnimatedNumber.tsx';
 import { CenterField } from './game-ui/CenterField.tsx';
 import { CompactHeader } from './game-ui/CompactHeader.tsx';
+import { GameHeader } from './game-ui/GameHeader.tsx';
 import { MobileCollected } from './game-ui/MobileCollected.tsx';
 import { MyHand } from './game-ui/MyHand.tsx';
+import { OpponentCollectedOverlay } from './game-ui/OpponentCollectedOverlay.tsx';
 import { OpponentSlot, type OpponentMenuActions } from './game-ui/OpponentSlot.tsx';
+import { RightSidebar } from './game-ui/RightSidebar.tsx';
 import { RoomRulesModal } from './RoomRulesModal.tsx';
 import { HostRulesAction } from './GameSettingsActions.tsx';
 
@@ -138,8 +146,10 @@ export function GameView({
   }
   const [rulesOpen, setRulesOpen] = useState(false);
   const [videoModalOpen, setVideoModalOpen] = useState(false);
+  // 채팅 모달 — 모바일 전용 (PC는 RightSidebar 고정 패널)
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatWidth, setChatWidth] = useState<number>(() => loadChatPanelWidth());
+  // 모바일 — 상대 딴패 오버레이 토글 (기본 접힘)
+  const [oppCollectedOpen, setOppCollectedOpen] = useState(false);
   const chatUnread = useChatStore((s) => s.unreadCount);
   const isHost = view.hostUserId === view.myUserId;
 
@@ -295,10 +305,10 @@ export function GameView({
     // 상대 STOP이면 STOP 이펙트(2.2초) 먼저 → 끝난 뒤 게임종료 이펙트 (겹치지 않게)
     if (isOpponentStop) {
       trigger('stop');
-      t += 2200 + 400; // STOP 이펙트 끝 + 0.4초
+      t += ENDED_STOP_TO_GAMEOVER_MS;
     }
     timers.push(setTimeout(() => trigger('game-over'), t)); // 게임종료 이펙트
-    t += 2200 + 1500; // 게임종료 이펙트(2.2초) + 1.5초
+    t += ENDED_GAMEOVER_TO_MODAL_MS;
     timers.push(setTimeout(() => onEndedReadyRef.current?.(), t)); // → 모달
     endedTimersRef.current = timers;
   }, [
@@ -473,45 +483,45 @@ export function GameView({
     };
   }
 
-  // Grid layout
-  // PC: [점수판 | 게임판 | (채팅) | (화상)] / 손패는 점수판+게임판 col span
-  // 모바일: [점수판 | 게임판/손패]. 화상/채팅은 풀스크린 모달.
-  const collectedW = isCompact ? COLLECTED_PANEL_WIDTH.mobile : COLLECTED_PANEL_WIDTH.pc;
-  const showVideoSidebar = !isCompact && videoSidebar != null;
-  const showChatSide = !isCompact && chatOpen;
-  // PC grid columns: 점수판 | 게임판(1fr) | [채팅] | [화상]
-  const gridCols = isCompact
-    ? `${collectedW}px 1fr`
-    : `${collectedW}px 1fr${showChatSide ? ` ${chatWidth}px` : ''}${showVideoSidebar ? ' auto' : ''}`;
-  const gridRows = `auto minmax(0, 1fr) ${handMin}px`;
+  // Grid layout (2026-06 시니어 친화 개편)
+  // PC:    cols [내 딴패 패널(auto) | 게임판(1fr) | 우측 통합 사이드바(auto)]
+  //        rows [헤더 | 상대 보드 | 게임판(1fr) | 손패]
+  // 모바일: [점수판 | 게임판/손패] — 현행 유지. 화상/채팅은 풀스크린 모달.
+  const collectedW = COLLECTED_PANEL_WIDTH.mobile;
+  const gridCols = isCompact ? `${collectedW}px 1fr` : 'auto minmax(0, 1fr) auto';
+  const gridRows = isCompact
+    ? `auto minmax(0, 1fr) ${handMin}px`
+    : `auto auto minmax(0, 1fr) ${handMin}px`;
   const gap = isCompact ? '2px' : '8px';
 
-  // PC 컬럼 총 개수 + 채팅/화상 컬럼 인덱스 (1-based)
-  const pcTotalCols = 2 + (showChatSide ? 1 : 0) + (showVideoSidebar ? 1 : 0);
-  const chatColIndex = showChatSide ? 3 : null;
-  const videoColIndex = showVideoSidebar ? (showChatSide ? 4 : 3) : null;
-
-  // 손패 grid 위치 — 모바일: col 2,
-  // PC: 점수판~채팅 (화상 제외). 채팅창 열려도 손패는 채팅 컬럼 아래까지 차지해
-  // width 변화 영향 받지 않게 함 (게임판만 좁아짐).
-  const handPcSpan = 2 + (showChatSide ? 1 : 0);
+  // 손패 grid 위치 — 모바일: col 2 row 3 / PC: col 2 row 4 (좌측 딴패 패널이 하단까지)
   const handGridPlacement: React.CSSProperties = isCompact
     ? { gridColumn: '2 / span 1', gridRow: '3' }
-    : { gridColumn: `1 / span ${handPcSpan}`, gridRow: '3' };
-  // 헤더 grid 위치 — PC에서 전체 col span (채팅/화상 포함)
+    : { gridColumn: '2', gridRow: '4' };
+  // 헤더 — 전체 col span, row 1
   const headerGridPlacement: React.CSSProperties = isCompact
     ? { gridColumn: '1 / span 2', gridRow: '1' }
-    : { gridColumn: `1 / span ${pcTotalCols}`, gridRow: '1' };
+    : { gridColumn: '1 / span 3', gridRow: '1' };
 
   const handSection = myPlayer ? (
     <section
-      className={`flex flex-shrink-0 rounded-lg border ${isCompact ? 'p-0.5' : 'p-2'} ${
+      className={`relative flex flex-shrink-0 border ${isCompact ? 'rounded-lg p-0.5' : 'rounded-xl p-2'} ${
         isMyTurn
-          ? 'border-amber-400/60 bg-amber-400/10 sm:shadow-[0_0_16px_rgba(251,191,36,0.25)]'
-          : 'border-felt-900/60 bg-felt-900/40'
+          ? isCompact
+            ? 'border-amber-400/60 bg-amber-400/10 sm:shadow-[0_0_16px_rgba(251,191,36,0.25)]'
+            : 'border-amber-400/70 bg-felt-950/85 shadow-[0_0_16px_rgba(251,191,36,0.3)]'
+          : isCompact
+            ? 'border-felt-900/60 bg-felt-900/40'
+            : 'border-felt-800/70 bg-felt-950/85'
       }`}
       style={{ maxHeight: handMax, ...handGridPlacement }}
     >
+      {/* 본인 턴 안내 — 시니어 가독성 (PC만, 손패 상단 중앙 pill) */}
+      {isMyTurn && !isCompact && (
+        <div className="pointer-events-none absolute -top-4 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border-2 border-amber-400/80 bg-felt-950/95 px-5 py-1 text-lg font-black text-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.45)]">
+          👇 내 차례입니다
+        </div>
+      )}
       <MyHand
         hand={myPlayer.hand ?? []}
         matchableIds={matchableIds}
@@ -545,7 +555,7 @@ export function GameView({
         }}
       >
         {badge && !isCompact && (
-          <div className="absolute left-1/2 top-1 z-50 -translate-x-1/2 rounded-full border border-amber-400/50 bg-amber-500/20 px-3 py-1 text-xs font-bold text-amber-200 backdrop-blur-sm">
+          <div className="absolute left-1/2 top-16 z-50 -translate-x-1/2 rounded-full border border-amber-400/50 bg-amber-500/20 px-3 py-1 text-xs font-bold text-amber-200 backdrop-blur-sm">
             {badge}
           </div>
         )}
@@ -554,7 +564,7 @@ export function GameView({
             본인 turn이면 상단 가운데. 상대 turn이면 OpponentSlot에서 표시 (props 전달). */}
         {isCountdownForMe && (
           <div
-            className={`pointer-events-none absolute left-1/2 top-1 z-40 -translate-x-1/2 rounded-full border px-3 py-1 text-xs font-bold backdrop-blur-sm ${
+            className={`pointer-events-none absolute left-1/2 z-40 -translate-x-1/2 rounded-full border px-3 py-1 text-xs font-bold backdrop-blur-sm ${isCompact ? 'top-1' : 'top-16'} ${
               remainingSec! <= 5
                 ? 'border-rose-400/60 bg-rose-500/30 text-rose-200 animate-pulse'
                 : 'border-felt-700/60 bg-felt-950/80 text-felt-200'
@@ -568,7 +578,7 @@ export function GameView({
         {view.testMode && (
           <button
             onClick={() => setTestControlsVisible((v) => !v)}
-            className="absolute left-1/2 top-10 z-50 -translate-x-1/2 rounded-full border border-rose-500/60 bg-rose-950/90 px-2 py-0.5 text-[12px] font-bold text-rose-100 hover:bg-rose-900/90"
+            className="absolute left-1/2 top-24 z-50 -translate-x-1/2 rounded-full border border-rose-500/60 bg-rose-950/90 px-2 py-0.5 text-[12px] font-bold text-rose-100 hover:bg-rose-900/90"
             title="시나리오 컨트롤 + 로비/설정 5개 토글"
           >
             {testControlsVisible ? '🙈 숨기기' : '🎛️ 컨트롤'}
@@ -577,7 +587,7 @@ export function GameView({
 
         {/* 테스트 모드 활성 시 — 명시적 배너 + 호스트면 시나리오 변경/재시작 컨트롤 */}
         {view.testMode && testControlsVisible && (
-          <div className="absolute left-2 top-2 z-40 flex items-center gap-2">
+          <div className="absolute left-2 top-16 z-40 flex items-center gap-2">
             <span className="pointer-events-none rounded border border-rose-500/60 bg-rose-500/20 px-2 py-0.5 text-[15px] font-bold text-rose-100 backdrop-blur-sm">
               🧪 시나리오: {view.testPreset ? PRESET_LABELS[view.testPreset] : '없음'}
             </span>
@@ -640,7 +650,7 @@ export function GameView({
           </div>
         )}
 
-        {/* 헤더 — PC에서 사이드바 있으면 col 1~3 전체 */}
+        {/* 헤더 — 모바일: CompactHeader / PC: GameHeader (상대 보드는 row 2로 분리) */}
         <div className="min-w-0" style={headerGridPlacement}>
           {isCompact ? (
             <CompactHeader
@@ -653,37 +663,56 @@ export function GameView({
               remainingSec={remainingSec}
             />
           ) : (
-            <section
-              className={`grid gap-2 ${
-                others.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-              }`}
-            >
-              {others.map((p) => {
-                const isThisTurn = effectiveView.turnUserId === p.userId;
-                return (
-                  <OpponentSlot
-                    key={p.userId}
-                    player={p}
-                    isCurrentTurn={isThisTurn}
-                    allowGukJoon={view.rules?.allowGukJoon ?? true}
-                    isAfk={afkUserId === p.userId}
-                    remainingSec={isThisTurn ? remainingSec : null}
-                    menuActions={buildOpponentMenu(p.userId)}
-                    onScoreClick={() => setScoreDetailPlayer(p)}
-                  />
-                );
-              })}
-            </section>
+            <GameHeader
+              view={effectiveView}
+              isHost={isHost}
+              onLeave={onLeave}
+              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenRules={() => setRulesOpen(true)}
+            />
           )}
         </div>
 
-        {/* 좌측 점수판 — col 1, row 2 (모바일은 row-span-2: game+hand 영역) */}
+        {/* PC 상대 보드 — row 2, col 1~2 (2인=1명 전체폭, 3인=2명 반반+dense) */}
+        {!isCompact && (
+          <section
+            className={`grid gap-2 ${
+              others.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+            }`}
+            style={{ gridColumn: '1 / span 2', gridRow: '2' }}
+          >
+            {others.map((p) => {
+              const isThisTurn = effectiveView.turnUserId === p.userId;
+              return (
+                <OpponentSlot
+                  key={p.userId}
+                  player={p}
+                  isCurrentTurn={isThisTurn}
+                  allowGukJoon={view.rules?.allowGukJoon ?? true}
+                  isFirstPlayer={effectiveView.players[0]?.userId === p.userId}
+                  dense={others.length > 1}
+                  isAfk={afkUserId === p.userId}
+                  remainingSec={isThisTurn ? remainingSec : null}
+                  menuActions={buildOpponentMenu(p.userId)}
+                  onScoreClick={() => setScoreDetailPlayer(p)}
+                />
+              );
+            })}
+          </section>
+        )}
+
+        {/* 좌측 내 딴패 패널 — 모바일: 점수판(총점 포함) / PC: 그룹만 (점수는 게임판 우하단) */}
         <div
-          className="min-h-0 overflow-hidden rounded-lg border border-felt-900/50 bg-felt-900/30"
-          style={{
-            gridColumn: '1',
-            gridRow: isCompact ? '2 / span 2' : '2',
-          }}
+          className={`min-h-0 overflow-hidden ${
+            isCompact
+              ? 'rounded-lg border border-felt-900/50 bg-felt-900/30'
+              : 'rounded-xl border border-felt-800/60 bg-felt-900/60'
+          }`}
+          style={
+            isCompact
+              ? { gridColumn: '1', gridRow: '2 / span 2' }
+              : { gridColumn: '1', gridRow: '3 / span 2', width: COLLECTED_PANEL_WIDTH.pc }
+          }
         >
           <MobileCollected
             collected={myPlayer?.collected ?? []}
@@ -692,14 +721,41 @@ export function GameView({
             winScoreOverride={view.rules?.winScore}
             nineYeolAsSsangPi={my9YeolAsSsangPi}
             allowGukJoon={view.rules?.allowGukJoon ?? true}
+            showTotal={false}
           />
         </div>
 
-        {/* 가운데 — 게임판. col 2 row 2 */}
+        {/* 모바일 — 상대 딴패 토글 (기본 접힘) + 오버레이 */}
+        {isCompact && others.length > 0 && (
+          <button
+            onClick={() => setOppCollectedOpen((v) => !v)}
+            className="fixed left-1/2 top-8 z-40 -translate-x-1/2 rounded-b-lg border border-felt-700/60 bg-felt-950/90 px-3 py-0.5 text-xs font-bold text-felt-100 shadow-lg backdrop-blur-sm"
+            aria-expanded={oppCollectedOpen}
+          >
+            🃏 상대 딴패 {oppCollectedOpen ? '▲' : '▼'}
+          </button>
+        )}
+        {isCompact && oppCollectedOpen && (
+          <OpponentCollectedOverlay
+            opponents={others}
+            allowGukJoon={view.rules?.allowGukJoon ?? true}
+            onClose={() => setOppCollectedOpen(false)}
+          />
+        )}
+
+        {/* 가운데 — 게임판. 모바일: col 2 row 2 / PC: col 2 row 3 */}
         <div
           className="relative z-10 min-h-0 overflow-visible"
-          style={{ gridColumn: '2', gridRow: '2' }}
+          style={
+            isCompact
+              ? { gridColumn: '2', gridRow: '2' }
+              : { gridColumn: '2', gridRow: '3' }
+          }
         >
+          {/* PC — 게임판 felt 질감 배경 (중앙이 밝은 그린 radial → 고급스러운 대비) */}
+          {!isCompact && (
+            <div className="pointer-events-none absolute inset-0 rounded-2xl border border-felt-600/30 bg-[radial-gradient(ellipse_at_center,var(--color-felt-600)_0%,var(--color-felt-700)_55%,var(--color-felt-800)_100%)] shadow-[inset_0_0_80px_rgba(0,0,0,0.3)]" />
+          )}
           <CenterField
             field={effectiveView.field}
             deckCount={effectiveView.deckCount}
@@ -707,120 +763,107 @@ export function GameView({
             flippingPhase={multiFlippingPhase}
             isCompact={isCompact}
           />
-          {/* 본인 누적 배수 + 고 횟수 — 게임판 좌측 하단 (사이드바 총점수와 같은 높이) */}
-          {(() => {
-            const m = computeMultiplier(myPlayer);
-            const goN = myPlayer?.goCount ?? 0;
-            if (m <= 1 && goN === 0) return null;
-            return (
-              <div className="pointer-events-none absolute bottom-2 left-2 flex items-end gap-2">
-                {goN > 0 && (
-                  <span
-                    className={`rounded-full bg-rose-500/80 px-2 py-0.5 font-black text-white shadow-[0_0_8px_rgba(244,63,94,0.6)] ${
-                      isCompact ? 'text-base' : 'text-2xl'
+          {/* 내 점수 + N고/배수 — 게임판 우하단 (PC/모바일 공통, 모바일은 축소) */}
+          {myPlayer &&
+            (() => {
+              const sc = calculateScore(myPlayer.collected ?? [], {
+                nineYeolAsSsangPi: my9YeolAsSsangPi,
+                allowGukJoon: view.rules?.allowGukJoon ?? true,
+              });
+              const canStop = canDeclareGoStop(
+                sc,
+                effectiveView.players.length,
+                view.rules?.winScore,
+              );
+              const m = computeMultiplier(myPlayer);
+              const goN = myPlayer.goCount ?? 0;
+              return (
+                <div className="absolute bottom-2 right-2 z-20 flex items-center gap-2">
+                  {goN > 0 && (
+                    <span
+                      className={`rounded-full bg-rose-500/80 font-black text-white shadow-[0_0_8px_rgba(244,63,94,0.6)] ${
+                        isCompact ? 'px-2 py-0.5 text-sm' : 'px-2.5 py-1 text-xl'
+                      }`}
+                    >
+                      {goN}고
+                    </span>
+                  )}
+                  {m > 1 && (
+                    <span
+                      title={multiplierBreakdown(myPlayer)}
+                      className={`font-black text-amber-300 drop-shadow-[0_0_8px_rgba(252,211,77,0.7)] ${
+                        isCompact ? 'text-2xl' : 'text-4xl'
+                      }`}
+                    >
+                      ×{m}
+                    </span>
+                  )}
+                  <div
+                    className={`flex items-baseline rounded-xl border ${
+                      isCompact ? 'gap-1 px-2 py-0.5' : 'gap-1.5 px-4 py-1.5'
+                    } ${
+                      canStop
+                        ? 'border-amber-400/70 bg-amber-400/15 shadow-[0_0_12px_rgba(251,191,36,0.3)]'
+                        : 'border-felt-700/60 bg-felt-950/70'
                     }`}
                   >
-                    {goN}고
-                  </span>
-                )}
-                {m > 1 && (
-                  <span
-                    title={multiplierBreakdown(myPlayer)}
-                    className={`font-black text-amber-300 drop-shadow-[0_0_8px_rgba(252,211,77,0.7)] ${
-                      isCompact ? 'text-3xl' : 'text-5xl'
-                    }`}
-                  >
-                    ×{m}
-                  </span>
-                )}
-              </div>
-            );
-          })()}
+                    <span className={`font-bold text-felt-300 ${isCompact ? 'text-xs' : 'text-base'}`}>
+                      내 점수
+                    </span>
+                    <AnimatedNumber
+                      value={sc.total}
+                      className={`font-black ${isCompact ? 'text-2xl' : 'text-5xl'} ${
+                        canStop ? 'text-amber-300' : 'text-felt-100'
+                      }`}
+                    />
+                    <span className={`font-bold text-felt-300 ${isCompact ? 'text-xs' : 'text-lg'}`}>
+                      점
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+          {/* 모바일 — 화상/채팅 토글 버튼 (바닥패 영역 높이 기준 1/3·2/3 지점, 우측) */}
+          {isCompact && videoMobileModalRender && (
+            <button
+              onClick={() => setVideoModalOpen(true)}
+              className="absolute right-1 top-1/3 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-felt-700/60 bg-felt-950/90 text-xl shadow-lg backdrop-blur-sm transition hover:scale-110 active:scale-95"
+              aria-label={view.rules?.mediaMode === 'voice-only' ? '음성채팅' : '화상채팅'}
+              title={view.rules?.mediaMode === 'voice-only' ? '음성채팅' : '화상채팅'}
+            >
+              {view.rules?.mediaMode === 'voice-only' ? '🎙️' : '🎥'}
+            </button>
+          )}
+          {isCompact && (
+            <button
+              onClick={() => setChatOpen(true)}
+              className="absolute right-1 top-2/3 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-felt-700/60 bg-felt-950/90 text-xl shadow-lg backdrop-blur-sm transition hover:scale-110 active:scale-95"
+              aria-label="채팅"
+              title="채팅"
+            >
+              💬
+              {chatUnread > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
+                  {chatUnread > 9 ? '9+' : chatUnread}
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
-        {/* PC 채팅 사이드 패널 — 화상 왼쪽 col, row 2 (게임판 영역) */}
-        {showChatSide && chatColIndex && (
-          <div
-            className="min-h-0"
-            style={{ gridColumn: String(chatColIndex), gridRow: '2' }}
-          >
-            <ChatSidePanel
-              width={chatWidth}
-              onWidthChange={setChatWidth}
-              onClose={() => setChatOpen(false)}
-            />
-          </div>
-        )}
-
-        {/* PC 우측 화상 사이드바 — 점수판과 같은 행, 채팅 우측 */}
-        {showVideoSidebar && videoColIndex && (
-          <div
-            className="min-h-0"
-            style={{ gridColumn: String(videoColIndex), gridRow: '2' }}
-          >
-            {videoSidebar}
+        {/* PC 우측 통합 사이드바 — col 3, 헤더 아래 전체 (화상/음성 + 참여자 + 채팅) */}
+        {!isCompact && (
+          <div className="min-h-0" style={{ gridColumn: '3', gridRow: '2 / span 3' }}>
+            <RightSidebar view={effectiveView} mediaTiles={videoSidebar} />
           </div>
         )}
 
         {/* 하단 손패 — 모바일: col 2만, PC: col-span-2 (점수판+게임판) */}
         {handSection}
 
-        {/* PC 우측 상단 — 로비/설정 버튼 fixed. testMode면 토글로 숨김 가능 */}
-        {!isCompact && (!view.testMode || testControlsVisible) && (
-          <div className="pointer-events-auto fixed right-3 top-3 z-30 flex gap-1.5">
-            <button
-              onClick={() => void onLeave()}
-              className="flex h-9 items-center gap-1 rounded-full border border-rose-600/50 bg-rose-900/60 px-3 text-xs font-bold text-rose-100 shadow-lg backdrop-blur-sm transition hover:scale-105 hover:bg-rose-800/70 active:scale-95"
-              aria-label="로비로 나가기"
-              title="로비로 나가기"
-            >
-              🚪 로비로
-            </button>
-            <button
-              onClick={() => setSettingsOpen(true)}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-felt-700/60 bg-felt-950/90 text-lg shadow-lg backdrop-blur-sm transition hover:scale-110 hover:bg-felt-900 active:scale-95"
-              aria-label="설정"
-              title="설정"
-            >
-              ⚙️
-            </button>
-          </div>
-        )}
 
-        {/* 모바일 화상 토글 버튼 — 우측 (이모지 버튼 위쪽) */}
-        {isCompact && videoMobileModalRender && (
-          <button
-            onClick={() => setVideoModalOpen(true)}
-            className="pointer-events-auto fixed right-3 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-felt-700/60 bg-felt-950/90 text-xl shadow-lg backdrop-blur-sm transition hover:scale-110 hover:bg-felt-900 active:scale-95"
-            style={{ top: 'calc(50% - 56px)' }}
-            aria-label={view.rules?.mediaMode === 'voice-only' ? '음성채팅' : '화상채팅'}
-            title={view.rules?.mediaMode === 'voice-only' ? '음성채팅' : '화상채팅'}
-          >
-            {view.rules?.mediaMode === 'voice-only' ? '🎙️' : '🎥'}
-          </button>
-        )}
-
-        {/* 이모지 반응 — socket broadcast */}
-        <EmojiReactions />
-
-        {/* 채팅 토글 버튼 — PC: 사이드 패널 토글 / 모바일: 모달.
-            PC에서 사이드 열려있으면 패널 안 닫기 버튼이 닫기 담당이라 버튼 숨김. */}
-        {(!showChatSide) && (
-          <button
-            onClick={() => setChatOpen(true)}
-            className="pointer-events-auto fixed right-3 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-felt-700/60 bg-felt-950/90 text-xl shadow-lg backdrop-blur-sm transition hover:scale-110 hover:bg-felt-900 active:scale-95"
-            style={{ top: 'calc(50% + 56px)' }}
-            aria-label="채팅"
-            title="채팅"
-          >
-            💬
-            {chatUnread > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-bold text-white">
-                {chatUnread > 9 ? '9+' : chatUnread}
-              </span>
-            )}
-          </button>
-        )}
+        {/* 이모지 떠오르는 효과 — 피커는 PC: 사이드바 채팅 / 모바일: 채팅 모달 헤더 */}
+        <EmojiFloatLayer />
 
         {/* 설정 모달 */}
         <SettingsModal
@@ -853,6 +896,7 @@ export function GameView({
         <ChatPanel
           open={chatOpen && isCompact}
           onClose={() => setChatOpen(false)}
+          headerExtra={<EmojiPickerButton direction="down" />}
         />
 
         {/* 매칭 카드 종류 다른 2장일 때 사용자 선택 모달 (rules-final.md §1-6).

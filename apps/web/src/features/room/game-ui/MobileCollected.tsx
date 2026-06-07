@@ -2,6 +2,12 @@ import type { Card as CardType } from '@gostop/shared';
 import { calculateScore, canDeclareGoStop } from '@gostop/shared';
 import { AnimatedNumber } from '../../../components/AnimatedNumber.tsx';
 import { Card } from '../../../components/Card.tsx';
+import {
+  groupCollected,
+  KIND_COLORS,
+  KIND_LABELS,
+  type CollectedKind,
+} from '../../../lib/collectedGroups.ts';
 import { COLLECTED_CARD_WIDTH } from '../../../lib/layoutConstants.ts';
 import { piValue } from '../../../lib/multiplierUtils.ts';
 
@@ -16,17 +22,11 @@ interface MobileCollectedProps {
   nineYeolAsSsangPi?: boolean;
   /** 국준(9월 쌍피) 인정 여부 (default true) */
   allowGukJoon?: boolean;
+  /** 하단 총 점수 블록 표시 여부 — PC 좌측 패널은 점수를 게임판 우하단에 따로 표시 (default true) */
+  showTotal?: boolean;
 }
 
-type Kind = 'gwang' | 'yeol' | 'ddi' | 'pi';
-
-const LABELS: Record<Kind, string> = { gwang: '광', yeol: '끗', ddi: '띠', pi: '피' };
-const COLORS: Record<Kind, string> = {
-  gwang: 'bg-amber-500/20 text-amber-200 border-amber-500/50',
-  yeol: 'bg-sky-500/20 text-sky-200 border-sky-500/50',
-  ddi: 'bg-rose-500/20 text-rose-200 border-rose-500/50',
-  pi: 'bg-stone-500/20 text-stone-200 border-stone-500/50',
-};
+type Kind = CollectedKind;
 
 /**
  * 좌측 패널 — 내 딴패 + 점수 분해.
@@ -41,24 +41,13 @@ export function MobileCollected({
   winScoreOverride,
   nineYeolAsSsangPi = false,
   allowGukJoon = true,
+  showTotal = true,
 }: MobileCollectedProps) {
   const score = calculateScore(collected, { nineYeolAsSsangPi, allowGukJoon });
   const canStop = canDeclareGoStop(score, playerCount, winScoreOverride);
 
   // 9월 끗을 쌍피로 사용 시 m09-yeol을 yeol에서 pi 자리로 시각 이동 (점수 계산도 동일하게)
-  const m09yeol = collected.find((c) => c.id === 'm09-yeol');
-  const groups: Record<Kind, CardType[]> = {
-    gwang: collected.filter((c) => c.kind === 'gwang'),
-    yeol:
-      nineYeolAsSsangPi
-        ? collected.filter((c) => c.kind === 'yeol' && c.id !== 'm09-yeol')
-        : collected.filter((c) => c.kind === 'yeol'),
-    ddi: collected.filter((c) => c.kind === 'ddi'),
-    pi:
-      nineYeolAsSsangPi && m09yeol
-        ? [...collected.filter((c) => c.kind === 'pi'), m09yeol]
-        : collected.filter((c) => c.kind === 'pi'),
-  };
+  const groups: Record<Kind, CardType[]> = groupCollected(collected, nineYeolAsSsangPi);
 
   const cardW = isCompact ? COLLECTED_CARD_WIDTH.mobile : COLLECTED_CARD_WIDTH.pc;
 
@@ -80,6 +69,7 @@ export function MobileCollected({
       </div>
 
       {/* 총 점수 — 영역 가장 아래에 고정 정렬 */}
+      {showTotal && (
       <div
         className={`flex flex-shrink-0 items-center justify-between rounded border ${
           isCompact ? 'px-2 py-0.5' : 'px-3 py-2'
@@ -99,6 +89,7 @@ export function MobileCollected({
           }`}
         />
       </div>
+      )}
     </aside>
   );
 }
@@ -119,45 +110,29 @@ function KindGroup({
   const label = (
     <div
       className={`flex flex-shrink-0 items-baseline justify-between gap-1 rounded border ${
-        isCompact ? 'px-1.5 py-0.5' : 'px-2 py-1'
-      } ${COLORS[kind]}`}
+        isCompact ? 'px-1 py-0' : 'px-2 py-1'
+      } ${KIND_COLORS[kind]}`}
     >
-      <span className={`font-bold ${isCompact ? 'text-xs' : 'text-sm'}`}>
-        {LABELS[kind]}
+      <span className={`font-bold ${isCompact ? 'text-[10px]' : 'text-sm'}`}>
+        {KIND_LABELS[kind]}
       </span>
       <AnimatedNumber
         value={displayCount}
-        className={isCompact ? 'text-sm font-extrabold' : 'text-base font-extrabold'}
+        className={isCompact ? 'text-xs font-extrabold' : 'text-base font-extrabold'}
       />
     </div>
   );
 
-  // 모바일(compact): 라벨 + 카드를 한 줄에 inline (가로 좁은 column)
-  if (isCompact) {
-    return (
-      <div className="flex items-center gap-1">
-        <div className="w-12 flex-shrink-0">{label}</div>
-        {cards.length > 0 ? (
-          <div className="flex min-w-0 flex-1 flex-wrap items-center -space-x-2">
-            {cards.map((c) => (
-              <Card key={c.id} card={c} width={cardW} layoutId={c.id} />
-            ))}
-          </div>
-        ) : (
-          <span className="text-[10px] italic text-felt-300/40">없음</span>
-        )}
-      </div>
-    );
-  }
-
-  // PC: 라벨 위 / 카드 아래
+  // 라벨 위 / 카드 아래 — 겹침 50% 고정 (PC/모바일 동일 구조, 사이즈만 다름)
   return (
     <div className="flex flex-col gap-1">
       {label}
       {cards.length > 0 ? (
-        <div className="flex flex-wrap items-center -space-x-3 pl-1">
-          {cards.map((c) => (
-            <Card key={c.id} card={c} width={cardW} layoutId={c.id} />
+        <div className="flex flex-wrap items-center pl-1">
+          {cards.map((c, i) => (
+            <div key={c.id} style={i > 0 ? { marginLeft: -Math.round(cardW / 2) } : undefined}>
+              <Card card={c} width={cardW} layoutId={c.id} />
+            </div>
           ))}
         </div>
       ) : (
