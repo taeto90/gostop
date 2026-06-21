@@ -4,7 +4,13 @@ export const config = {
   // dev 환경 — localhost / 127.0.0.1 둘 다 허용 (playwright 호환).
   CORS_ORIGIN: process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
-    : ['http://localhost:5173', 'http://127.0.0.1:5173'],
+    : [
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        // Capacitor Android 앱 WebView origin (capacitor.config androidScheme: 'https').
+        // ⚠️ 프로덕션은 Railway 의 CORS_ORIGIN env 를 쓰므로 거기에도 'https://localhost' 추가 필요.
+        'https://localhost',
+      ],
   LIVEKIT_URL: process.env.LIVEKIT_URL ?? '',
   LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY ?? '',
   LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET ?? '',

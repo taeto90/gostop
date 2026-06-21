@@ -18,7 +18,7 @@ export const COMPACT_BREAKPOINT = 950;
  * widthBased / heightBased 자동 계산이 더 작으면 그쪽이 우선 적용.
  */
 export const HAND_CARD_MAX_WIDTH = {
-  pc: 100,
+  pc: 116, // 2026-06: 100→116 — PC 손패 확대 (바닥패보다 크게)
   mobile: 90,
 } as const;
 
@@ -36,7 +36,7 @@ export const HAND_CARD_GAP = 11;
  * shortMobile = rootH < 400 인 매우 짧은 화면용 (비중 더 높임).
  */
 export const HAND_AREA_RATIO = {
-  pc: 0.2,
+  pc: 0.24, // 2026-06: 0.2→0.24 — PC 손패 영역 확대 (heightBased 결정자, 손패 키우기)
   mobile: 0.285, // 2026-06: 0.24→0.285 — 모바일 손패 카드 확대 (heightBased 결정자)
   shortMobile: 0.32,
 } as const;
@@ -46,7 +46,7 @@ export const HAND_AREA_MIN = 85;
 
 /** 손패 영역 최대 height (px). 비율 계산 결과가 너무 커지지 않게. */
 export const HAND_AREA_MAX = {
-  pc: 170,
+  pc: 200, // 2026-06: 170→200 — PC 손패 영역 상한 확대 (손패 키우기)
   mobile: 135,
 } as const;
 
@@ -58,7 +58,7 @@ export const HAND_AREA_MAX = {
  * 더 작으면 그쪽이 우선. 모바일이 큰 이유: heightBased로 자동 제한되므로 cap은 넉넉히.
  */
 export const FIELD_CARD_MAX_WIDTH = {
-  pc: 117,
+  pc: 84, // 2026-06: 117→84 — PC 바닥패를 손패보다 작게 (손패 영역 확대로 게임판 height도 축소)
   mobile: 52, // 모바일 — 손패(간격 11px·10장 기준 ~52px)와 동일 크기
 } as const;
 

@@ -6,6 +6,7 @@ import { useAuthStore, initAuth } from './stores/authStore.ts';
 import { useGameHistoryStore } from './stores/gameHistoryStore.ts';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { EventOverlay } from './components/EventOverlay.tsx';
+import { NativeBackButtonGuard } from './components/NativeBackButtonGuard.tsx';
 import { InstallPwaBanner } from './components/InstallPwaBanner.tsx';
 import { ToastContainer } from './components/ToastContainer.tsx';
 import { tryLockLandscape } from './lib/pwa.ts';
@@ -121,6 +122,7 @@ export default function App() {
         <EventOverlay />
         <ToastContainer />
         <InstallPwaBanner />
+        <NativeBackButtonGuard />
       </BrowserRouter>
     </ErrorBoundary>
   );

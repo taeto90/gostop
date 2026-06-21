@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Capacitor } from '@capacitor/core';
 import App from './App.tsx';
 import './styles/index.css';
 
@@ -17,3 +18,11 @@ createRoot(rootElement).render(
     <App />
   </StrictMode>,
 );
+
+// Capgo OTA — 앱(Capacitor)에서 새 번들이 정상 로드됐음을 알림.
+// 호출 안 하면 업데이트 후 일정 시간 뒤 이전 번들로 자동 롤백됨 (안전장치).
+if (Capacitor.isNativePlatform()) {
+  void import('@capgo/capacitor-updater').then(({ CapacitorUpdater }) => {
+    void CapacitorUpdater.notifyAppReady();
+  });
+}

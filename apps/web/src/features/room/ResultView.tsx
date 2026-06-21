@@ -8,7 +8,7 @@ import { emitWithAck } from '../../lib/socket.ts';
 import { playSound } from '../../lib/sound.ts';
 import { useElementSize } from '../../hooks/useElementSize.ts';
 import { isCompactWidth, RESULT_CARD_WIDTH } from '../../lib/layoutConstants.ts';
-import { buildRankedPlayers } from './result/helpers.ts';
+import { buildRankedPlayers, decideWinnerUserId } from './result/helpers.ts';
 import { Badge, CollectedGroups, FlagBadge } from './result/Badges.tsx';
 import { toast } from '../../stores/toastStore.ts';
 
@@ -43,11 +43,16 @@ export function ResultView({
   const ranked = buildRankedPlayers(view, goCounts);
 
   const top = ranked[0];
-  const winners = top
-    ? ranked.filter((r) => r.final.finalTotal === top.final.finalTotal)
-    : [];
-  const isDraw = winners.length > 1;
-  const amWinner = winners.some((w) => w.userId === view.myUserId);
+  // 나가리 — 아무도 winScore(임계점수)에 도달 못 하면 승자 없음 (무승부).
+  // decideWinnerUserId: 총통 > 3뻑 > 임계점수 이상 최고점. 미만이면 null.
+  const winnerUserId = decideWinnerUserId(view);
+  const isNagari = winnerUserId === null;
+  const winners =
+    isNagari || !top
+      ? []
+      : ranked.filter((r) => r.final.finalTotal === top.final.finalTotal);
+  const isDraw = isNagari || winners.length > 1;
+  const amWinner = !isNagari && winners.some((w) => w.userId === view.myUserId);
 
   useEffect(() => {
     playSound('game-end');
@@ -128,15 +133,34 @@ export function ResultView({
         >
           <div className="text-sm font-semibold text-felt-200">🏁 게임 종료</div>
           <div className="text-3xl font-extrabold text-amber-300">
-            {isDraw
-              ? '🤝 무승부!'
-              : amWinner
-                ? '🏆 우승!'
-                : `${top?.emojiAvatar} ${top?.nickname} 우승`}
+            {isNagari
+              ? '🤝 나가리 — 무승부'
+              : isDraw
+                ? '🤝 무승부!'
+                : amWinner
+                  ? '🏆 우승!'
+                  : `${top?.emojiAvatar} ${top?.nickname} 우승`}
           </div>
         </motion.div>
 
+        {/* 나가리 박스 — 아무도 winScore 미도달 (무승부) */}
+        {isNagari && (
+          <motion.div
+            initial={{ scale: 0.7, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 100, damping: 15, delay: 0.2 }}
+            className="mb-4 rounded-xl border-2 border-felt-400/40 bg-felt-700/30 p-4 text-center"
+          >
+            <div className="text-5xl">🤝</div>
+            <div className="mt-2 text-2xl font-black text-felt-100">나가리 — 무승부</div>
+            <div className="mt-1 text-sm text-felt-300">
+              아무도 {view.rules?.winScore ?? 7}점에 도달하지 못했습니다
+            </div>
+          </motion.div>
+        )}
+
         {/* 우승자 박스 */}
+        {!isNagari && (
         <motion.div
           initial={{ scale: 0.7, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -184,6 +208,7 @@ export function ResultView({
             </div>
           )}
         </motion.div>
+        )}
 
         {/* 순위 — 모바일: 1 col, PC: 2 col */}
         <div

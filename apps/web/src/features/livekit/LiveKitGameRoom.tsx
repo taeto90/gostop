@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { LiveKitRoom, RoomAudioRenderer } from '@livekit/components-react';
 import '@livekit/components-styles';
-import { LogLevel, setLogLevel } from 'livekit-client';
+import { AudioPresets, LogLevel, setLogLevel, type RoomOptions } from 'livekit-client';
 import {
   fetchLiveKitToken,
   loadCameraPref,
@@ -11,6 +11,24 @@ import {
 // LiveKit SDK 콘솔 로그 끄기 — disconnect/connecting/signal connected 등 게임 디버그
 // 가독성 떨어뜨리는 메시지들. 에러는 그대로 출력.
 setLogLevel(LogLevel.error);
+
+// 오디오 품질 옵션 — 기본값은 비트레이트가 낮아 음성이 답답하게 들림.
+//   audioPreset: musicHighQuality = 64kbps (기본 speech ~20kbps 대비 크게 향상)
+//   red: 패킷 손실 복원 (모바일/셀룰러 끊김에 효과)
+//   dtx: 무음 구간 전송 절약 (유지 — 대역폭)
+//   capture: 에코 제거 / 노이즈 억제 / 자동 게인 (모바일 마이크 품질)
+const ROOM_OPTIONS: RoomOptions = {
+  publishDefaults: {
+    audioPreset: AudioPresets.musicHighQuality,
+    red: true,
+    dtx: true,
+  },
+  audioCaptureDefaults: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  },
+};
 
 interface LiveKitGameRoomProps {
   roomId: string;
@@ -93,6 +111,7 @@ export function LiveKitGameRoom({
       connect={shouldConnect}
       audio={initialAudio}
       video={initialVideo}
+      options={ROOM_OPTIONS}
       data-lk-theme="default"
       style={{ height: '100%', width: '100%' }}
     >

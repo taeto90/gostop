@@ -1,6 +1,10 @@
 import { useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from '../../lib/supabase.ts';
 import { toast } from '../../stores/toastStore.ts';
+
+/** 앱(Capacitor)에서 OAuth 리다이렉트를 받을 custom scheme deep-link. Supabase Redirect URLs에 등록됨. */
+const APP_OAUTH_REDIRECT = 'com.gostop.app://login-callback';
 
 export function LoginPage() {
   const [busy, setBusy] = useState(false);
@@ -11,11 +15,28 @@ export function LoginPage() {
       return;
     }
     setBusy(true);
+
+    // 앱: 시스템 브라우저로 OAuth → deep-link 콜백(authStore appUrlOpen)이 세션 처리
+    if (Capacitor.isNativePlatform()) {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: APP_OAUTH_REDIRECT, skipBrowserRedirect: true },
+      });
+      if (error || !data?.url) {
+        toast.error(error?.message ?? 'OAuth URL 생성 실패');
+        setBusy(false);
+        return;
+      }
+      const { Browser } = await import('@capacitor/browser');
+      await Browser.open({ url: data.url });
+      // 세션 수립은 deep-link 콜백에서 → busy는 화면 전환으로 자연 해제
+      return;
+    }
+
+    // 웹: 현재 origin으로 리다이렉트 (기존 흐름)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-      },
+      options: { redirectTo: window.location.origin },
     });
     if (error) {
       toast.error(error.message);

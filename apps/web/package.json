@@ -1,15 +1,22 @@
 {
   "name": "@gostop/web",
-  "version": "0.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:app": "vite build --mode capacitor",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cap:sync": "pnpm build:app && cap sync android",
+    "cap:open": "cap open android",
+    "ota": "pnpm build:app && npx @capgo/cli@latest bundle upload com.gostop.app --path dist --channel production && npx @capgo/cli@latest channel set production com.gostop.app --latest"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/browser": "^8.0.3",
+    "@capgo/capacitor-updater": "^8.49.7",
     "@gostop/shared": "workspace:*",
     "@livekit/components-react": "^2.9.20",
     "@livekit/components-styles": "^1.2.0",
@@ -26,6 +33,9 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
     "@tailwindcss/vite": "^4.1.0",
     "@types/howler": "^2.2.12",
     "@types/react": "^19.1.0",

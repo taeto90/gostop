@@ -32,7 +32,6 @@ export function RoomScreen() {
   const profile = useSessionStore((s) => s.profile);
   const view = useRoomStore((s) => s.view);
   const navigate = useNavigate();
-  const [joinError, setJoinError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
   const [needsPassword, setNeedsPassword] = useState(false);
   const [pwErr, setPwErr] = useState<string | null>(null);
@@ -55,7 +54,13 @@ export function RoomScreen() {
 
     setTried(true);
     void (async () => {
-      // 우선 rejoin 시도 (이미 멤버였으면 재접속)
+      // 존재하지 않거나 이미 시작된 방 → 로비로 돌려보내며 안내 모달(toast).
+      const bounceToLobby = (msg: string) => {
+        toast.error(msg);
+        navigate('/', { replace: true });
+      };
+
+      // 우선 rejoin 시도 (이미 멤버였으면 재접속 — 진행 중이어도 본인 복귀 OK)
       const rejoin = await emitWithAck('room:rejoin', {
         userId: profile.userId,
         roomId: id,
@@ -72,7 +77,29 @@ export function RoomScreen() {
       });
       if (joinPlayer.ok) return;
 
-      // 자리가 가득 찬 경우 관전자로 시도
+      const err = joinPlayer.error;
+      // 비밀방 → 비밀번호 모달
+      if (err.includes('비밀')) {
+        setNeedsPassword(true);
+        return;
+      }
+      // 존재하지 않는 방 → 로비로
+      if (err.includes('존재하지 않는') || err.includes('찾을 수 없')) {
+        bounceToLobby('존재하지 않는 방입니다. 로비로 이동합니다.');
+        return;
+      }
+      // 다른 방에서 게임 진행 중 (1인 1방 정책) → 서버 안내 그대로
+      if (err.includes('다른 방')) {
+        bounceToLobby(err);
+        return;
+      }
+      // 이 방이 이미 시작됨 → 로비로 (관전자 자동 입장 X)
+      if (err.includes('진행 중')) {
+        bounceToLobby('이미 게임이 시작된 방입니다. 로비로 이동합니다.');
+        return;
+      }
+
+      // 그 외 (대기방 자리 가득 등) → 관전자로 입장 시도
       const joinSpec = await emitWithAck('room:join', {
         userId: profile.userId,
         roomId: id,
@@ -80,13 +107,8 @@ export function RoomScreen() {
         emojiAvatar: profile.emojiAvatar,
         asSpectator: true,
       });
-      if (!joinSpec.ok) {
-        if (joinSpec.error.includes('비밀')) {
-          setNeedsPassword(true);
-        } else {
-          setJoinError(joinSpec.error);
-        }
-      }
+      if (joinSpec.ok) return;
+      bounceToLobby(joinSpec.error);
     })();
   }, [id, profile, view?.roomId, tried, navigate]);
 
@@ -135,23 +157,6 @@ export function RoomScreen() {
             }
           }}
         />
-      </div>
-    );
-  }
-
-  if (joinError) {
-    return (
-      <div className="min-h-screen bg-slate-950 p-8 text-slate-100">
-        <div className="mx-auto max-w-md text-center">
-          <h2 className="mb-3 text-xl font-bold text-rose-300">방 입장 실패</h2>
-          <p className="mb-6 text-slate-400">{joinError}</p>
-          <button
-            onClick={() => navigate('/')}
-            className="rounded bg-slate-700 px-4 py-2 hover:bg-slate-600"
-          >
-            로비로 돌아가기
-          </button>
-        </div>
       </div>
     );
   }

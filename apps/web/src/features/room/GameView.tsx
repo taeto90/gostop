@@ -150,6 +150,8 @@ export function GameView({
   const [chatOpen, setChatOpen] = useState(false);
   // 모바일 — 상대 딴패 오버레이 토글 (기본 접힘)
   const [oppCollectedOpen, setOppCollectedOpen] = useState(false);
+  // play-card emit in-flight 가드 (doPlayCardEmit)
+  const playEmitBusyRef = useRef(false);
   const chatUnread = useChatStore((s) => s.unreadCount);
   const isHost = view.hostUserId === view.myUserId;
 
@@ -322,6 +324,10 @@ export function GameView({
   ]);
 
   function handlePlayCardWithPeek(cardId: string) {
+    // 애니메이션 진행 중 클릭 차단 — 화면 손패가 server보다 이전 상태(이미 낸 카드 포함)라
+    // 그대로 emit하면 server "Card not in hand" 에러 (연타 desync 방지)
+    if (sequenceBusy || animationPhase !== 'idle') return;
+
     // rules-final.md §4 — 흔들기 게임 도중 발동.
     // 같은 month 3장 보유 + 그 월 흔들기 미선언 + 본인 turn → 흔들기 모달.
     const card = myPlayer?.hand?.find((c) => c.id === cardId);
@@ -345,9 +351,14 @@ export function GameView({
 
   /** localPeakingId 즉시 set + server emit + fallback timeout 1s. */
   function doPlayCardEmit(cardId: string, declineBomb: boolean) {
+    // emit ~ broadcast 도착 사이의 짧은 창에서 중복 emit 차단
+    if (playEmitBusyRef.current) return;
+    playEmitBusyRef.current = true;
     setLocalPeakingId(cardId);
     if (peakingTimerRef.current) clearTimeout(peakingTimerRef.current);
-    void emitPlayCardMulti(cardId, undefined, undefined, declineBomb);
+    void emitPlayCardMulti(cardId, undefined, undefined, declineBomb).finally(() => {
+      playEmitBusyRef.current = false;
+    });
     peakingTimerRef.current = setTimeout(() => {
       setLocalPeakingId(null);
     }, 1000);

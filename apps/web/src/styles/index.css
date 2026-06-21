@@ -43,6 +43,11 @@ html, body {
   height: 100dvh;
   width: 100dvw;
   overflow: hidden;
+  /* Capacitor 앱 몰입모드 — 카메라 컷아웃/둥근 모서리 피해 게임 영역 인셋.
+     웹 브라우저는 env(safe-area-inset-*)=0 이라 영향 없음. */
+  box-sizing: border-box;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 /* 입력 필드는 select 가능 */

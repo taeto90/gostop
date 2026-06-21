@@ -1,6 +1,7 @@
 import { useGameHistoryStore } from '../../stores/gameHistoryStore.ts';
 import { useAuthStore } from '../../stores/authStore.ts';
 import { disconnectSocket } from '../../lib/socket.ts';
+import pkg from '../../../package.json';
 
 interface ProfileCardProps {
   nickname: string;
@@ -38,15 +39,20 @@ export function LobbyProfileCard({
             {rank}
           </span>
         </div>
-        <button
-          onClick={() => {
-            disconnectSocket();
-            void useAuthStore.getState().signOut();
-          }}
-          className="self-start text-[10px] text-red-400/70 hover:text-red-300 sm:text-xs"
-        >
-          로그아웃
-        </button>
+        <div className="flex flex-col items-end gap-0.5 self-start">
+          <span className="text-[9px] font-medium text-green-400/50 sm:text-[10px]">
+            v{pkg.version}
+          </span>
+          <button
+            onClick={() => {
+              disconnectSocket();
+              void useAuthStore.getState().signOut();
+            }}
+            className="text-[10px] text-red-400/70 hover:text-red-300 sm:text-xs"
+          >
+            로그아웃
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:gap-3">
         <StatBox icon="⭐" label="레벨" value={level} />

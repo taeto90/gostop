@@ -159,8 +159,20 @@ export function playCardForPlayer(
     player.flags.consecutiveAutoTurns = 0;
   }
 
+  // 종료 판정 전에 점수 계산 — 마지막 손패 winScore 도달 검사에 필요.
+  const winScore = room.rules.winScore;
+  const myScore = calculateScore(player.collected, {
+    nineYeolAsSsangPi: player.flags.nineYeolAsSsangPi ?? false,
+    allowGukJoon: room.rules.allowGukJoon,
+  });
+
+  // 마지막 손패를 내고 winScore 도달 → 즉시 종료 (go/stop 없이 본인 승리, 후턴 진행 X).
+  // 손패가 비면 더 낼 카드가 없어 GO가 불가능 → 그 자리에서 게임 종료 (rules-final.md §5).
+  const wonOnLastCard =
+    player.hand.length === 0 && myScore.total >= computeGoThreshold(player, winScore);
+
   const allEmpty = room.players.every((p) => p.hand.length === 0);
-  const ended = player.flags.ppeoksCaused >= 3 || allEmpty;
+  const ended = player.flags.ppeoksCaused >= 3 || allEmpty || wonOnLastCard;
   if (ended) {
     room.phase = 'ended';
   }
@@ -172,11 +184,6 @@ export function playCardForPlayer(
   // 고 조건:
   //   첫 고 — winScore 이상 도달
   //   2고+ — 직전 고 점수보다 1점 이상 올라야 (lastGoScore 비교)
-  const winScore = room.rules.winScore;
-  const myScore = calculateScore(player.collected, {
-    nineYeolAsSsangPi: player.flags.nineYeolAsSsangPi ?? false,
-    allowGukJoon: room.rules.allowGukJoon,
-  });
   const reachedWin =
     !ended && player.hand.length > 0 && myScore.total >= computeGoThreshold(player, winScore);
 
