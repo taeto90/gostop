@@ -147,6 +147,15 @@ export function useMultiTurnSequence(
       return;
     }
 
+    // ②-3 (2026-06-21): 시퀀스 처리 중이면 어떤 view든 무조건 큐잉.
+    // 아래 early-return(turnSeq 동일 / no-diff)이 처리 중에 setDisplayView·lastProcessedRef를
+    // 건드려 진행 중 애니메이션을 점프/스킵시키는 레이스를 차단한다. 큐에 쌓인 view는
+    // runSequenceLoop→runOneSequence에서 diff를 계산해 순서대로 재생됨 (no-diff면 거기서 즉시 swap).
+    if (processingRef.current) {
+      pendingQueueRef.current.push(incoming);
+      return;
+    }
+
     // 이미 처리된 동일 상태 재진입 방지 (heldViewRef 해제 등)
     if (last.turnSeq === incoming.turnSeq && last.deckCount === incoming.deckCount) {
       setDisplayView(incoming);
@@ -166,10 +175,6 @@ export function useMultiTurnSequence(
       return;
     }
 
-    if (processingRef.current) {
-      pendingQueueRef.current.push(incoming);
-      return;
-    }
     void runSequenceLoop(incoming);
     // view 객체 자체 의존성 — turnSeq/flags/prebuild 변화 모두 감지
     // eslint-disable-next-line react-hooks/exhaustive-deps
