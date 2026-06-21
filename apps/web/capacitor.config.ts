@@ -11,10 +11,11 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
   },
   plugins: {
-    // Capgo OTA — 웹 에셋(HTML/JS/CSS) 변경을 앱 재설치 없이 자동 업데이트.
-    // 업로드는 @capgo/cli (API 키는 CLI 인증으로만 사용, 여기엔 넣지 않음).
+    // DIY OTA (Capgo Cloud 미사용) — autoUpdate:false 수동 모드.
+    // 앱 시작 시 lib/otaUpdate.ts 가 Supabase Storage의 latest.json 확인 →
+    // 더 새 번들이면 download+set (다음 실행 시 적용). 업로드는 `pnpm ota:diy`.
     CapacitorUpdater: {
-      autoUpdate: true,
+      autoUpdate: false,
     },
   },
 };

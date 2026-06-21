@@ -1,6 +1,6 @@
 {
   "name": "@gostop/web",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "cap:sync": "pnpm build:app && cap sync android",
     "cap:open": "cap open android",
-    "ota": "pnpm build:app && npx @capgo/cli@latest bundle upload com.gostop.app --path dist --channel production && npx @capgo/cli@latest channel set production com.gostop.app --latest"
+    "ota:diy": "pnpm build:app && node --env-file=.env scripts/ota-diy.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.0",
@@ -41,6 +41,7 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "archiver": "^7.0.1",
     "tailwindcss": "^4.1.0",
     "vite": "^7.1.0",
     "vite-plugin-pwa": "^1.0.0"

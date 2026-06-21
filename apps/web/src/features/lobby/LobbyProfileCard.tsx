@@ -26,7 +26,7 @@ export function LobbyProfileCard({
 
   return (
     <div className="rounded-xl border border-amber-700/50 bg-green-900/40 p-4 backdrop-blur-sm sm:p-5">
-      <h3 className="mb-3 text-base font-bold text-amber-400 sm:text-lg">내 프로필</h3>
+      <h3 className="mb-3 text-base font-bold text-amber-400 sm:text-lg">나의 프로필</h3>
       <div className="mb-4 flex items-center gap-3 sm:gap-4">
         <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-amber-500 bg-green-950 text-3xl shadow-lg sm:h-16 sm:w-16 sm:text-4xl">
           {emojiAvatar}

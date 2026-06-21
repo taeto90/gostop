@@ -19,10 +19,7 @@ createRoot(rootElement).render(
   </StrictMode>,
 );
 
-// Capgo OTA — 앱(Capacitor)에서 새 번들이 정상 로드됐음을 알림.
-// 호출 안 하면 업데이트 후 일정 시간 뒤 이전 번들로 자동 롤백됨 (안전장치).
+// DIY OTA (Capgo Cloud 미사용) — notifyAppReady + Supabase 매니페스트 확인.
 if (Capacitor.isNativePlatform()) {
-  void import('@capgo/capacitor-updater').then(({ CapacitorUpdater }) => {
-    void CapacitorUpdater.notifyAppReady();
-  });
+  void import('./lib/otaUpdate.ts').then((m) => m.checkForOtaUpdate());
 }
