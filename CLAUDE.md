@@ -541,12 +541,12 @@ testMode에서 phase별 console.log 자동 출력 (`[turnSeq=N 🟢본인=alice]
 - ✅ **게임종료 모달 타이밍** — sequenceBusy로 4-phase 완료 후에만 ChoiceModal 발화
 - ✅ **탭 녹화** — dev + testMode에서 MediaRecorder API로 .webm 다운로드
 - ✅ **Phase 3→4 딜레이** — DELAY_AFTER_HAND (0.75s) + DELAY_AFTER_FLIP (1.0s) 분리
-- 🟡 **남은 작업**: 카카오 OAuth / 본인인증 / 이용약관 / 등급분류 / 다국어 / 카드 테마 — [`docs/ROADMAP66.md`](docs/ROADMAP66.md) 참고
+- 🟡 **남은 작업**: 앱 아이콘/스플래시 / Play Store 출시(개인정보처리방침·등급분류) / 카카오 OAuth·본인인증 / 카드 테마·i18n — [`docs/ROADMAP6.md`](docs/ROADMAP6.md) 참고
 
 ## 문서 참조 정책
 
 - **매 작업 시**: 이 CLAUDE.md (자동 로드)
 - **사이즈 작업 시**: [`apps/web/docs/layout-sizing.md`](apps/web/docs/layout-sizing.md)
-- **새 세션 시작 시 1회만**: [`docs/ROADMAP66.md`](docs/ROADMAP66.md) — 다음 작업 / 우선순위 / 추천 기능 (최신). compact 시점마다 다시 읽을 필요 없음
+- **새 세션 시작 시 1회만**: [`docs/ROADMAP6.md`](docs/ROADMAP6.md) — 다음 작업 / 우선순위 (최신, 2026-06-21). compact 시점마다 다시 읽을 필요 없음
 - **룰 정의 / 미구현 룰**: [`docs/rules-final.md`](docs/rules-final.md) (정통 매칭 §1-6 표 포함, 테스트 모드 v2 preset 시나리오 설계 기준), [`docs/rules-todo.md`](docs/rules-todo.md)
 - [`docs/ROADMAP.md`](docs/ROADMAP.md), [`docs/ROADMAP2.md`](docs/ROADMAP2.md), [`docs/ROADMAP3.md`](docs/ROADMAP3.md), [`docs/ROADMAP4.md`](docs/ROADMAP4.md), [`docs/ROADMAP5.md`](docs/ROADMAP5.md)는 구버전 — 참고용

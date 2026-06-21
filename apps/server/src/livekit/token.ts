@@ -26,7 +26,9 @@ export async function generateLiveKitToken(req: TokenRequest): Promise<string> {
   const at = new AccessToken(config.LIVEKIT_API_KEY, config.LIVEKIT_API_SECRET, {
     identity: req.participantId,
     name: req.participantName,
-    ttl: 60 * 60,
+    // 12시간 — 긴 게임 세션 중 네트워크 끊김 후 재접속 시 토큰 만료 실패 방지.
+    // (토큰은 join 인증용 — 접속 유지 자체엔 영향 X. 이전 1h는 장시간 세션 재접속에 부족)
+    ttl: 60 * 60 * 12,
   });
   at.addGrant({
     roomJoin: true,

@@ -1,4 +1,5 @@
 import type { Card as CardType } from '@gostop/shared';
+import { motion } from 'framer-motion';
 import { Card } from '../../../components/Card.tsx';
 
 export function Badge({
@@ -25,10 +26,13 @@ export function FlagBadge({
   color,
   children,
   pulse = false,
+  delay = 0,
 }: {
   color: 'amber' | 'sky' | 'rose';
   children: React.ReactNode;
   pulse?: boolean;
+  /** 스태거 등장 지연 (초) — 박/멍따 배지 슬램인 연출용 */
+  delay?: number;
 }) {
   const colors = {
     amber: 'bg-amber-500/40 text-amber-100 border-amber-400 shadow-amber-500/30',
@@ -36,9 +40,15 @@ export function FlagBadge({
     rose: 'bg-rose-500/40 text-rose-100 border-rose-400 shadow-rose-500/30',
   };
   return (
-    <span className={`rounded border px-2 py-0.5 font-bold shadow-md ${colors[color]} ${pulse ? 'animate-pulse' : ''}`}>
+    <motion.span
+      // 박/멍따 임팩트 — 0에서 살짝 오버슈트하며 슬램인 (낮은 damping = 바운스)
+      initial={{ scale: 0, rotate: -10, opacity: 0 }}
+      animate={{ scale: 1, rotate: 0, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 13, delay }}
+      className={`inline-block rounded border px-2 py-0.5 font-bold shadow-md ${colors[color]} ${pulse ? 'animate-pulse' : ''}`}
+    >
       {children}
-    </span>
+    </motion.span>
   );
 }
 

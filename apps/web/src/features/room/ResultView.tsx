@@ -183,30 +183,39 @@ export function ResultView({
               </span>
             )}
           </div>
-          {top && (
-            <div className="mt-1 flex flex-wrap justify-center gap-1.5 text-[11px]">
-              {top.final.flags.chongtong && (
-                <FlagBadge color="amber">👑 총통</FlagBadge>
-              )}
-              {top.final.flags.pibak && <FlagBadge color="rose" pulse>피박 ×2</FlagBadge>}
-              {top.final.flags.gwangbak && <FlagBadge color="amber" pulse>광박 ×2</FlagBadge>}
-              {top.final.flags.myungbak && <FlagBadge color="sky" pulse>멍박 ×2</FlagBadge>}
-              {top.final.flags.myungttadak && (
-                <FlagBadge color="sky" pulse>멍따 ×2</FlagBadge>
-              )}
-              {top.final.flags.goCount >= 3 && (
-                <FlagBadge color="rose">
-                  {top.final.flags.goCount}고 ×{Math.pow(2, top.final.flags.goCount - 2)}
-                </FlagBadge>
-              )}
-              {top.final.flags.gobak && <FlagBadge color="rose">고박 ×2</FlagBadge>}
-              {(top.final.flags.nagariMultiplier ?? 1) > 1 && (
-                <FlagBadge color="amber">
-                  나가리 ×{top.final.flags.nagariMultiplier}
-                </FlagBadge>
-              )}
-            </div>
-          )}
+          {top &&
+            (() => {
+              const f = top.final.flags;
+              const badges: {
+                color: 'amber' | 'sky' | 'rose';
+                pulse?: boolean;
+                label: React.ReactNode;
+              }[] = [];
+              if (f.chongtong) badges.push({ color: 'amber', label: '👑 총통' });
+              if (f.pibak) badges.push({ color: 'rose', pulse: true, label: '피박 ×2' });
+              if (f.gwangbak) badges.push({ color: 'amber', pulse: true, label: '광박 ×2' });
+              if (f.myungbak) badges.push({ color: 'sky', pulse: true, label: '멍박 ×2' });
+              if (f.myungttadak) badges.push({ color: 'sky', pulse: true, label: '멍따 ×2' });
+              if (f.goCount >= 3)
+                badges.push({
+                  color: 'rose',
+                  label: `${f.goCount}고 ×${Math.pow(2, f.goCount - 2)}`,
+                });
+              if (f.gobak) badges.push({ color: 'rose', label: '고박 ×2' });
+              if ((f.nagariMultiplier ?? 1) > 1)
+                badges.push({ color: 'amber', label: `나가리 ×${f.nagariMultiplier}` });
+              if (badges.length === 0) return null;
+              return (
+                <div className="mt-1 flex flex-wrap justify-center gap-1.5 text-[11px]">
+                  {/* 박/멍따 등 배수 배지 — 우승 박스 등장(0.2s) 후 스태거로 슬램인 */}
+                  {badges.map((b, i) => (
+                    <FlagBadge key={i} color={b.color} pulse={b.pulse} delay={0.4 + i * 0.12}>
+                      {b.label}
+                    </FlagBadge>
+                  ))}
+                </div>
+              );
+            })()}
         </motion.div>
         )}
 
