@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { isMobileTouch, isPwaMode } from '../lib/pwa.ts';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -21,7 +22,8 @@ export function InstallPwaBanner() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    if (isPwaMode() || !isMobileTouch()) return;
+    // Capacitor 네이티브 앱은 이미 설치된 앱 → PWA 설치 배너 숨김 (웹 브라우저에선 유지)
+    if (Capacitor.isNativePlatform() || isPwaMode() || !isMobileTouch()) return;
     if (localStorage.getItem(DISMISSED_KEY) === '1') return;
 
     const onBeforeInstall = (e: Event) => {
